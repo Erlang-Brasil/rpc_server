@@ -2,7 +2,9 @@
     {description, "RPC Server Application"},
     {vsn, "0.1.0"},
     {registered, [
-        rpc_server_sup 
+        rpc_server_sup,
+        rpc_server_sctp_listen_sup,
+        rpc_server_sctp_acceptor_sup
     ]},
     {mod, {rpc_server_app, []}},
     {applications, [
@@ -31,7 +33,10 @@
     ]},
     {modules, [
         rpc_server_app,
-        rpc_server_sup 
+        rpc_server_sup,
+        rpc_server_sctp_listen_sup,
+        rpc_server_sctp_acceptor_sup,
+        rpc_server_sctp_connection
     ]},
     {licenses, ["Apache-2.0"]},
     {links, []}
