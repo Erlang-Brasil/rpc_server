@@ -55,20 +55,41 @@ start_link([ClientSocket, ListenSocket]) ->
 %%%
 -spec init([]) -> {ok, #state{}} | {stop, term()}.
 init([ClientSocket, ListenSocket]) ->
-    ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p ", [ListenSocket, ClientSocket]),
+    ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p", [ListenSocket, ClientSocket]),
 
     case inet:peername(ClientSocket) of
         {ok, {_, _}} ->
             inet:setopts(ClientSocket, [{active, true}]),
-            gen_server:cast(self(), {process_request, ListenSocket, ClientSocket});
+            gen_server:cast(self(), {process_request, ListenSocket, ClientSocket}),
+            {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket}};
         {error, Reason} ->
             ?LOG_ERROR("Acceptor ~p: Falha ao obter endereço do cliente: ~p", [self(), Reason]),
             gen_tcp:close(ClientSocket),
             {stop, Reason}
-    end,
-    {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket}}.
+    end.
 
 
+%%% @doc Manipula chamadas síncronas ao servidor gen_server.
+%%%
+%%% Esta função é chamada automaticamente quando um cliente envia uma mensagem usando `gen_server:call/2`.
+%%% Ela permite tratar requisições síncronas e pode também solicitar o encerramento controlado do servidor.
+%%%
+%%% @param Request term() - A requisição recebida do cliente.
+%%% @param From {pid(), Tag} - Identificador do processo que fez a chamada.
+%%% @param State #state{} - Estado atual do servidor gen_server.
+%%%
+%%% @returns {reply, Reply, NewState} |
+%%%          {stop, Reason, Reply, NewState}
+%%%
+%%%          Retorna:
+%%%          <ul>
+%%%            <li>{@type {reply, Reply, NewState}} - Resposta à chamada e novo estado.</li>
+%%%            <li>{@type {stop, Reason, Reply, NewState}} - Encerra o servidor após responder.</li>
+%%%          </ul>
+%%%
+-spec handle_call(term(), {pid(), term()}, #state{}) ->
+    {reply, term(), #state{}} |
+    {stop, term(), term(), #state{}}.
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
 
