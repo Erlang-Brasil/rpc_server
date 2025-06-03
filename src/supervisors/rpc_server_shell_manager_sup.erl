@@ -1,10 +1,10 @@
 -module(rpc_server_shell_manager_sup).
 
 -behaviour(supervisor).
-
+-include("rpc_server.hrl").
 -export([start_link/0]).
 
--export([init/1]).
+-export([init/1, start_shell/2]).
 
 
 %%% @doc Inicia o supervisor do io manager.
@@ -38,3 +38,18 @@ init([]) ->
     ],
 
     {ok, {SupFlags, ChildSpecs}}. 
+
+
+-spec start_shell(socket() | ssl:sslsocket(), pid()) -> pid() | {error, Reason :: term()}.
+start_shell(ClientSocket, ConnectionPid) ->
+    Args = [ClientSocket, ConnectionPid],
+    case supervisor:start_child(?MODULE, [Args]) of 
+        {ok, ShellPid} -> 
+            ?LOG_INFO("Shell Iniciado PID ~p", [ShellPid]),
+            ShellPid;
+        {error, Reason} ->
+            ?LOG_ERROR("Falha ao iniciar o shell ~p", [Reason]),
+            {error, Reason}
+    end.
+
+ 

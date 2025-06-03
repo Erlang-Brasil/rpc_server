@@ -6,7 +6,8 @@
 
 -record(state, {
     clientSocket :: socket() | undefined,
-    listenSocket :: socket() | undefined
+    listenSocket :: socket() | undefined,
+    shellInstancePid :: pid() | undefined
 }).
 
 %% API
@@ -56,6 +57,7 @@ start_link([ClientSocket, ListenSocket]) ->
 -spec init([]) -> {ok, #state{}} | {stop, term()}.
 init([ClientSocket, ListenSocket]) ->
     ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p", [ListenSocket, ClientSocket]),
+    ShellInstancePid = rpc_server_shell_manager_sup:start_shell(ClientSocket, self()),
 
     case inet:peername(ClientSocket) of
         {ok, {_, _}} ->
@@ -63,7 +65,7 @@ init([ClientSocket, ListenSocket]) ->
                 ok ->
                     ?LOG_INFO("Socket configurado para modo ativo"),
                     gen_server:cast(self(), {process_request, ListenSocket, ClientSocket}),
-                    {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket}};
+                    {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket, shellInstancePid = ShellInstancePid}};
                 {error, Reason} ->
                     ?LOG_ERROR("Falha ao configurar socket para modo ativo: ~p", [Reason]),
                     gen_tcp:close(ClientSocket),
@@ -103,26 +105,9 @@ handle_call(stop, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-%%% @doc Manipula mensagens assíncronas para iniciar o processamento da requisição do cliente.
-%%%
-%%% Esta função é chamada quando uma mensagem do tipo `{process_request, ListenSocket, ClientSocket}`
-%%% é recebida pelo servidor gen_server. Ela inicia o processamento da conexão TCP com o cliente,
-%%% registrando informações no log e preparando o ambiente para receber dados.
-%%%
-%%% @param Request {tuple()} - A mensagem recebida, contendo:
-%%%        <ul>
-%%%          <li>{@type ListenSocket} - O socket que está escutando por conexões.</li>
-%%%          <li>{@type ClientSocket} - O socket conectado ao cliente.</li>
-%%%        </ul>
-%%% @param State #state{} - Estado atual do servidor gen_server.
-%%%
-%%% @returns {noreply, #state{}} - Retorna sem resposta e mantém o estado inalterado.
-%%%
--spec handle_cast({process_request, inet:socket(), inet:socket()}, #state{}) -> {noreply, #state{}}.
-handle_cast({process_request, ListenSocket, ClientSocket}, State) ->
-    ?LOG_INFO("Iniciando processamento da request: Listen ~p | Client: ~p", [ListenSocket, ClientSocket]),
-    {noreply, State}.
 
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
 %%% @doc Manipula mensagens de dados recebidos via TCP.
 %%%
@@ -141,9 +126,8 @@ handle_cast({process_request, ListenSocket, ClientSocket}, State) ->
 %%%
 -spec handle_info({tcp | tcp_closed | tcp_error, inet:socket(), term()}, #state{}) -> {noreply, #state{}}.   
 handle_info({tcp, Socket, Data}, #state{clientSocket = Socket} = State) ->
-    ?LOG_INFO("Dados recebidos: ~p", [Data]),
-
-    % TODO: Processar os dados recebidos
+    ?LOG_INFO("Enviando commando ~p para o shell ~p", [Data, State#state.shellInstancePid]),
+    gen_server:cast(State#state.shellInstancePid, {execute_command, Data}), 
     {noreply, State};
  
 

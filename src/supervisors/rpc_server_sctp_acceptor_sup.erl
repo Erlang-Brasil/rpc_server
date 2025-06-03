@@ -57,13 +57,11 @@ init([]) ->
 %%%          ou `{error, Reason}` caso contrário (por exemplo, falha ao iniciar o child no supervisor).
 %%%
 -spec start_acceptor(socket() | ssl:sslsocket(), socket() | ssl:sslsocket()) -> ok | {error, Reason :: term()}.
-start_acceptor(ClientSocket, ListenSocket) ->
-    % Primeiro criamos o processo connection sem iniciá-lo
+start_acceptor(ClientSocket, ListenSocket) ->    
     Args = [ClientSocket, ListenSocket],
     case supervisor:start_child(?MODULE, [Args]) of
         {ok, AcceptorPid} ->
-            ?LOG_INFO("Acceptor criado com PID ~p", [AcceptorPid]),
-            % Agora transferimos o controle do socket para o processo connection
+            ?LOG_INFO("Acceptor criado com PID ~p", [AcceptorPid]),            
             case gen_tcp:controlling_process(ClientSocket, AcceptorPid) of
                 ok ->
                     ?LOG_INFO("Controle do socket transferido para o acceptor ~p", [AcceptorPid]),
