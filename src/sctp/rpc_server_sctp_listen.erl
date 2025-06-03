@@ -152,13 +152,19 @@ code_change(_OldVsn, State, _Extra) ->
 -spec handle_info({inet_async, inet:socket(), reference(), {ok, inet:socket()}}, #state{}) ->
     {noreply, #state{}} |
     {stop, term(), #state{}}.
-handle_info({inet_async, ListenSocket, Ref, {ok, ClientSocket}}, #state{socket = ListenSocket, ref = Ref} = State) ->
+handle_info({inet_async, ListenSocket, Ref, {ok, ClientSocket}}, #state{socket = ListenSocket, ref = Ref, acceptor_sup = _} = State) ->
     ?LOG_INFO("Nova conexão recebida de ~p", [inet:peername(ClientSocket)]),
     case set_sockopt(ListenSocket, ClientSocket) of
         ok ->
-            {ok} = rpc_server_sctp_acceptor_sup:start_acceptor(ClientSocket, ListenSocket),
-            {ok, NewRef} = prim_inet:async_accept(ListenSocket, -1),
-            {noreply, State#state{ref = NewRef}};
+            case rpc_server_sctp_acceptor_sup:start_acceptor(ClientSocket, ListenSocket) of
+                {ok} ->
+                    {ok, NewRef} = prim_inet:async_accept(ListenSocket, -1),
+                    {noreply, State#state{ref = NewRef}};
+                {error, Reason} ->
+                    ?LOG_ERROR("Falha ao iniciar acceptor: ~p", [Reason]),
+                    gen_tcp:close(ClientSocket),
+                    {stop, Reason, State}
+            end;
         {error, Reason} ->
             ?LOG_ERROR("Erro ao configurar opções do socket: ~p", [Reason]),
             gen_tcp:close(ClientSocket),
@@ -192,6 +198,7 @@ handle_info({inet_async, ListenSocket, Ref, Error}, #state{socket = ListenSocket
 %%% @returns {noreply, #state{}} - Retorna sem resposta e mantém o estado inalterado.
 %%%
 handle_info(_Info, State) ->
+    ?LOG_INFO("Listen recebeu mensagem nao tratada ~p", [_Info]),
     {noreply, State}.
 
 
@@ -243,7 +250,6 @@ start_listening(AcceptorSup) ->
     Port = application:get_env(rpc_server, tcp_port, 8080),
     Options = [
         binary,
-        {packet, 2},
         {reuseaddr, true},
         {keepalive, true},
         {backlog, 128},
@@ -308,7 +314,7 @@ handle_listening({error, Reason}, _) ->
     ok | {error, term()}.
 set_sockopt(ListenSocket, ClientSocket) ->
     true = inet_db:register_socket(ClientSocket, inet_tcp),
-    case prim_inet:getopts(ListenSocket, [active, nodelay, keepalive, delay_send, priority, tos]) of
+    case prim_inet:getopts(ListenSocket, [nodelay, keepalive, delay_send, priority, tos]) of
         {ok, Opts} ->
             case prim_inet:setopts(ClientSocket, Opts) of
                 ok -> ok;

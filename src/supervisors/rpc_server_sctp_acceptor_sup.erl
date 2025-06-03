@@ -58,11 +58,21 @@ init([]) ->
 %%%
 -spec start_acceptor(socket() | ssl:sslsocket(), socket() | ssl:sslsocket()) -> ok | {error, Reason :: term()}.
 start_acceptor(ClientSocket, ListenSocket) ->
+    % Primeiro criamos o processo connection sem iniciá-lo
     Args = [ClientSocket, ListenSocket],
     case supervisor:start_child(?MODULE, [Args]) of
         {ok, AcceptorPid} ->
-            ?LOG_INFO("Acceptor criado com PID ~p", [AcceptorPid]), 
-            {ok};
+            ?LOG_INFO("Acceptor criado com PID ~p", [AcceptorPid]),
+            % Agora transferimos o controle do socket para o processo connection
+            case gen_tcp:controlling_process(ClientSocket, AcceptorPid) of
+                ok ->
+                    ?LOG_INFO("Controle do socket transferido para o acceptor ~p", [AcceptorPid]),
+                    {ok};
+                {error, Reason} ->
+                    ?LOG_ERROR("Falha ao transferir controle do socket para o acceptor: ~p", [Reason]),
+                    supervisor:terminate_child(?MODULE, AcceptorPid),
+                    {error, Reason}
+            end;
         {error, Reason} ->
             ?LOG_ERROR("Falha ao iniciar acceptor: ~p", [Reason]),
             {error, Reason}

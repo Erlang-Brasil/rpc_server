@@ -59,9 +59,16 @@ init([ClientSocket, ListenSocket]) ->
 
     case inet:peername(ClientSocket) of
         {ok, {_, _}} ->
-            inet:setopts(ClientSocket, [{active, true}]),
-            gen_server:cast(self(), {process_request, ListenSocket, ClientSocket}),
-            {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket}};
+            case inet:setopts(ClientSocket, [{active, true}]) of
+                ok ->
+                    ?LOG_INFO("Socket configurado para modo ativo"),
+                    gen_server:cast(self(), {process_request, ListenSocket, ClientSocket}),
+                    {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket}};
+                {error, Reason} ->
+                    ?LOG_ERROR("Falha ao configurar socket para modo ativo: ~p", [Reason]),
+                    gen_tcp:close(ClientSocket),
+                    {stop, Reason}
+            end;
         {error, Reason} ->
             ?LOG_ERROR("Acceptor ~p: Falha ao obter endereço do cliente: ~p", [self(), Reason]),
             gen_tcp:close(ClientSocket),
@@ -135,6 +142,7 @@ handle_cast({process_request, ListenSocket, ClientSocket}, State) ->
 -spec handle_info({tcp | tcp_closed | tcp_error, inet:socket(), term()}, #state{}) -> {noreply, #state{}}.   
 handle_info({tcp, Socket, Data}, #state{clientSocket = Socket} = State) ->
     ?LOG_INFO("Dados recebidos: ~p", [Data]),
+
     % TODO: Processar os dados recebidos
     {noreply, State};
  
@@ -188,6 +196,7 @@ handle_info({tcp_error, Socket, Reason}, #state{clientSocket = Socket} = State) 
 %%% @returns {noreply, #state{}} - Retorna sem resposta e mantém o estado inalterado.
 %%%
 handle_info(_Info, State) ->
+    ?LOG_INFO("Connection recebeu mensagem nao tratada"),
     {noreply, State}.
 
 

@@ -16,14 +16,12 @@
         {tcp_port, 8080},
         {tcp_listen_options, [
             binary,
-            {packet, 4},
             {reuseaddr, true},
             {active, false},
             {backlog, 1024}
         ]},
         {tcp_connection_options, [
             binary,
-            {packet, 4},
             {active, false},
             {nodelay, true},
             {keepalive, true},
