@@ -10,6 +10,10 @@ O servidor é construído usando uma arquitetura supervisionada em camadas, proj
 
 ```
 rpc_server_sup (Root)
+├── rpc_server_shell_sup
+│   └── rpc_server_shell_instance (dinâmico, temporary)
+│       └── [Gerencia instâncias do shell interativo]
+│
 └── rpc_server_sctp_listen_sup
     ├── rpc_server_sctp_acceptor_sup
     │   └── rpc_server_sctp_connection (dinâmico, temporary)
@@ -69,6 +73,12 @@ Legenda:
 - Configura o socket para modo ativo
 - Trata eventos TCP (dados, fechamento, erros)
 
+#### `rpc_server_shell_instance.erl`
+- Gerencia uma instância do shell interativo
+- Fornece interface de linha de comando para administração
+- Permite monitoramento e controle do servidor em tempo real
+- Implementa comandos administrativos via shell
+
 ## Fluxo de Conexão
 
 1. O listener (`rpc_server_sctp_listen`) inicia escutando na porta configurada
@@ -93,8 +103,21 @@ O servidor pode ser configurado através do arquivo `config/sys.config`:
 
 ```erlang
 {rpc_server, [
-    {SCTP_port, 8080},
-    {backlog, 1024}
+    {tcp_port, 8080},
+    {tcp_listen_options, [
+        binary,
+        {reuseaddr, true},
+        {active, false},
+        {backlog, 1024}
+    ]},
+    {tcp_connection_options, [
+        binary,
+        {active, false},
+        {nodelay, true},
+        {keepalive, true},
+        {send_timeout, 5000},
+        {send_timeout_close, true}
+    ]}
 ]}
 ```
 
@@ -111,6 +134,20 @@ rebar3 shell
 ```
 
 3. O servidor estará escutando na porta configurada (padrão: 8080)
+
+4. Use o shell interativo para administração:
+```erlang
+% No shell do Erlang
+rpc_server_shell:start().
+```
+
+### Comandos do Shell
+
+O shell interativo fornece os seguintes comandos:
+- `help` - Lista todos os comandos disponíveis
+- `status` - Mostra o status atual do servidor
+- `connections` - Lista todas as conexões ativas
+- `stats` - Exibe estatísticas do servidor
 
 ## Logs
 
@@ -137,6 +174,9 @@ rpc_server/
 │
 ├── sctp/                  # Implementação SCTP
 │   └── rpc_server_sctp_listen.erl
+│
+├── shell/                # Interface de administração
+│   └── rpc_server_shell_instance.erl
 │
 └── connections/          # Gerenciamento de conexões
     └── rpc_server_sctp_connection.erl
