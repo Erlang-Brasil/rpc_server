@@ -44,12 +44,12 @@ init([]) ->
             modules => [rpc_server_sctp_listen_sup]
         },
         #{
-            id => rpc_server_io_manager_sup,
-            start => {rpc_server_io_manager_sup, start_link, []},
+            id => rpc_server_shell_manager_sup,
+            start => {rpc_server_shell_manager_sup, start_link, []},
             restart => permanent,
             shutdown => infinity,
             type => supervisor,
-            modules => [rpc_server_io_manager_sup]
+            modules => [rpc_server_shell_manager_sup]
         }
     ],
     

@@ -201,9 +201,6 @@ handle_info(_Info, State) ->
     ?LOG_INFO("Listen recebeu mensagem nao tratada ~p", [_Info]),
     {noreply, State}.
 
-
-%% PRIVATE FUNCTIONS
-
 %%% @doc Aguarda até que o supervisor de acceptors esteja disponível.
 %%%
 %%% Esta função realiza tentativas periódicas para localizar o processo registrado como

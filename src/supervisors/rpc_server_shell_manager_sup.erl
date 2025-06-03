@@ -1,4 +1,4 @@
--module(rpc_server_io_manager_sup).
+-module(rpc_server_shell_manager_sup).
 
 -behaviour(supervisor).
 
@@ -21,13 +21,20 @@ start_link() ->
 -spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
     SupFlags = #{
-        strategy => rest_for_one,
+        strategy => simple_one_for_one,
         intensity => 10,
         period => 60
     },
 
     ChildSpecs = [
-    
+    #{
+        id => rpc_server_shell_instance,
+        start => {rpc_server_shell_instance, start_link, []},
+        restart => temporary,  % Não inicia automaticamente
+        shutdown => 9000,
+        type => worker,
+        modules => [rpc_server_shell_instance]
+    }
     ],
 
     {ok, {SupFlags, ChildSpecs}}. 
