@@ -2,6 +2,11 @@
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 
+-define(MODULO_VERSAO, 1).
+-define(DEFAULT_PORT, 8080).
+
+-vsn(?MODULO_VERSAO).
+
 -behaviour(gen_server).
 
 %% API
@@ -40,6 +45,7 @@ start_link() ->
 %%%
 -spec init([]) -> {ok, #state{}} | {stop, term()}.
 init([]) ->
+    ?LOG_INFO("Iniciando escuta na porta ~p | Versão ~p", [?DEFAULT_PORT, ?MODULO_VERSAO]),
     process_flag(trap_exit, true),
 
     case wait_for_acceptor_sup(50) of
@@ -244,7 +250,7 @@ wait_for_acceptor_sup(Attempts) ->
 
 -spec start_listening(pid()) -> {ok, #state{}} | {stop, term()}.
 start_listening(AcceptorSup) ->
-    Port = application:get_env(rpc_server, tcp_port, 8080),
+    Port = application:get_env(rpc_server, tcp_port, ?DEFAULT_PORT),
     Options = [
         binary,
         {reuseaddr, true},

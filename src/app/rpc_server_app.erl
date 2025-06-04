@@ -1,5 +1,8 @@
 -module(rpc_server_app).
 
+-define(MODULO_VERSAO, 1).
+-vsn(?MODULO_VERSAO).
+
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 -behaviour(application).
 

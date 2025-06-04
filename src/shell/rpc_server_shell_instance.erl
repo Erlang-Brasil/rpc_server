@@ -1,5 +1,10 @@
 -module(rpc_server_shell_instance).
 
+-author('Fernando Areias <nando.calheirosx@gmail.com>').
+
+-define(MODULO_VERSAO, 1).
+-vsn(?MODULO_VERSAO).
+
 -behaviour(gen_server).
 
 -include("rpc_server.hrl").
@@ -17,7 +22,7 @@ start_link([ClientSocket, ConnectionPid]) ->
     gen_server:start_link(?MODULE, [ClientSocket, ConnectionPid], []).
 
 init([ClientSocket, ConnectionPid]) ->
-    ?LOG_INFO("Init shell ClientSocket ~p | ConnectionPid ~p", [ClientSocket, ConnectionPid]),
+    ?LOG_INFO("Iniciando shell ClientSocket ~p | ConnectionPid ~p | Versão ~p", [ClientSocket, ConnectionPid, ?MODULO_VERSAO]),
     {ok, #state{connection = ConnectionPid, socket = ClientSocket}}.
 
 handle_call(stop, _From, State) ->
