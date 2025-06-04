@@ -42,13 +42,35 @@ init([]) ->
     
     {ok, {SupFlags, ChildSpecs}}. 
 
+
+%%% @doc Inicia um novo processo acceptor para gerenciar uma conexão recebida.
+%%%
+%%% Essa função é chamada sempre que uma nova conexão é aceita no socket de escuta.
+%%% Ela inicia um novo processo filho sob o supervisor do módulo atual, responsável por
+%%% gerenciar a comunicação com o cliente conectado.
+%%%
+%%% @param ClientSocket {socket() | ssl:sslsocket()} - O socket conectado ao cliente.
+%%% @param ListenSocket {socket() | ssl:sslsocket()} - O socket que aceitou a conexão.
+%%%
+%%% @returns ok | {error, Reason :: term()}
+%%%          Retorna `ok` se o processo acceptor foi iniciado com sucesso,
+%%%          ou `{error, Reason}` caso contrário (por exemplo, falha ao iniciar o child no supervisor).
+%%%
 -spec start_acceptor(socket() | ssl:sslsocket(), socket() | ssl:sslsocket()) -> ok | {error, Reason :: term()}.
-start_acceptor(ClientSocket, ListenSocket) ->
+start_acceptor(ClientSocket, ListenSocket) ->    
     Args = [ClientSocket, ListenSocket],
     case supervisor:start_child(?MODULE, [Args]) of
         {ok, AcceptorPid} ->
-            ?LOG_INFO("Acceptor criado com PID ~p", [AcceptorPid]), 
-            {ok};
+            ?LOG_INFO("Acceptor criado com PID ~p", [AcceptorPid]),            
+            case gen_tcp:controlling_process(ClientSocket, AcceptorPid) of
+                ok ->
+                    ?LOG_INFO("Controle do socket transferido para o acceptor ~p", [AcceptorPid]),
+                    {ok};
+                {error, Reason} ->
+                    ?LOG_ERROR("Falha ao transferir controle do socket para o acceptor: ~p", [Reason]),
+                    supervisor:terminate_child(?MODULE, AcceptorPid),
+                    {error, Reason}
+            end;
         {error, Reason} ->
             ?LOG_ERROR("Falha ao iniciar acceptor: ~p", [Reason]),
             {error, Reason}
