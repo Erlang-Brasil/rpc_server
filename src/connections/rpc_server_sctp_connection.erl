@@ -2,6 +2,9 @@
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 -include("rpc_server.hrl").
 
+-define(MODULO_VERSAO, 1).
+
+-vsn(?MODULO_VERSAO).
 -behaviour(gen_server).
 
 -record(state, {
@@ -56,7 +59,7 @@ start_link([ClientSocket, ListenSocket]) ->
 %%%
 -spec init([]) -> {ok, #state{}} | {stop, term()}.
 init([ClientSocket, ListenSocket]) ->
-    ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p", [ListenSocket, ClientSocket]),
+    ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p | Versão ~p", [ListenSocket, ClientSocket, ?MODULO_VERSAO]),
     ShellInstancePid = rpc_server_shell_manager_sup:start_shell(ClientSocket, self()),
 
     case inet:peername(ClientSocket) of

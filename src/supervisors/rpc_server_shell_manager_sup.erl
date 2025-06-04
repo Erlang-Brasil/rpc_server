@@ -1,5 +1,12 @@
 -module(rpc_server_shell_manager_sup).
 
+-author('Fernando Areias <nando.calheirosx@gmail.com>').
+
+
+-define(MODULO_VERSAO, 1).
+-vsn(?MODULO_VERSAO).
+
+
 -behaviour(supervisor).
 -include("rpc_server.hrl").
 -export([start_link/0]).
@@ -20,6 +27,7 @@ start_link() ->
 %%% @returns {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
 -spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
+    ?LOG_INFO("Iniciando supervisor do shell manager, versão ~p", [?MODULO_VERSAO]),
     SupFlags = #{
         strategy => simple_one_for_one,
         intensity => 10,

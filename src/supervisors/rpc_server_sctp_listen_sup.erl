@@ -1,6 +1,9 @@
 -module(rpc_server_sctp_listen_sup).
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
+-include("rpc_server.hrl").
+-define(MODULO_VERSAO, 1).
+-vsn(?MODULO_VERSAO).
 
 -behaviour(supervisor).
 
@@ -22,6 +25,7 @@ start_link() ->
 %%% @returns {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
 -spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
+    ?LOG_INFO("Iniciando supervisor do listening, versão ~p", [?MODULO_VERSAO]),
     SupFlags = #{
         strategy => rest_for_one,
         intensity => 10,
