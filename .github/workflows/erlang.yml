@@ -1,0 +1,54 @@
+# Nome do Workflow
+name: Erlang CI com OpenSUSE
+
+# Gatilhos para o workflow
+on:
+  push:
+    branches: [ "main" ] # Executa em pushes para a branch main
+  pull_request:
+    branches: [ "main" ] # Executa em pull requests para a branch main
+
+# Permissões para o GITHUB_TOKEN
+permissions:
+  contents: read # Permissão para ler o conteúdo do repositório (necessário para actions/checkout)
+
+jobs:
+  build:
+    # O tipo de runner que o job vai rodar
+    runs-on: ubuntu-latest # O runner do GitHub Actions (pode ser ubuntu, windows, macos)
+
+    # Especifica um contêiner Docker para rodar os steps
+    container:
+      image: opensuse/tumbleweed:latest # Imagem Docker do OpenSUSE Leap 15.5
+      # Para usar a versão mais recente do Leap: opensuse/leap:latest
+      # Para usar Tumbleweed (rolling release): opensuse/tumbleweed:latest
+
+    steps:
+    # Step 1: Checkout do código do repositório
+    - name: Checkout código
+      uses: actions/checkout@v4
+
+    # Step 2: Instalar Erlang e Rebar3 no contêiner OpenSUSE
+    - name: Instalar Erlang e Rebar3
+      run: |
+        # Atualiza os repositórios de pacotes
+        sudo zypper refresh
+        # Instala Erlang e Rebar3 sem pedir confirmação (-y)
+        # O OpenSUSE Leap 15.5 deve ter pacotes razoavelmente recentes.
+        # Se precisar de uma versão específica do Erlang/Rebar3 não disponível nos repositórios padrão,
+        # será necessário adicionar repositórios específicos (ex: Erlang Solutions) ou instalar manualmente/via asdf-vm.
+        sudo zypper install -y erlang rebar3
+        # Verifica as versões instaladas (opcional, bom para debug)
+        erl -version
+        rebar3 --version
+      shell: bash
+
+    # Step 3: Compilar o projeto Erlang
+    - name: Compilar projeto
+      run: rebar3 compile
+      shell: bash
+
+    # Step 4: Rodar os testes EUnit e Common Test
+    - name: Rodar testes
+      run: rebar3 do eunit, ct
+      shell: bash
