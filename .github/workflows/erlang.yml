@@ -20,11 +20,20 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
 
-    - name: Instalar Erlang e Rebar3
+    - name: Instalar dependências do sistema e Erlang
       run: |
         zypper refresh
-        zypper install -y erlang rebar3
+        # Install Erlang and other necessary tools like git and wget
+        zypper install -y erlang git wget
         erl -version
+      shell: bash
+
+    - name: Instalar Rebar3
+      run: |
+        wget https://github.com/erlang/rebar3/releases/download/3.22.1/rebar3 # Fetches a specific version, check for the latest
+        chmod +x rebar3
+        ./rebar3 local install # Installs rebar3 to ~/.cache/rebar3/bin
+        echo "$HOME/.cache/rebar3/bin" >> $GITHUB_PATH # Adds rebar3 to PATH
         rebar3 --version
       shell: bash
 
