@@ -2,13 +2,14 @@
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 
+-include("rpc_server.hrl").
 
 -define(MODULO_VERSAO, 1).
 -vsn(?MODULO_VERSAO).
 
+-ignore_xref([{start_link, 0}]).
 
 -behaviour(supervisor).
--include("rpc_server.hrl").
 -export([start_link/0]).
 
 -export([init/1, start_shell/2]).

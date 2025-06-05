@@ -7,6 +7,8 @@
 
 -vsn(?MODULO_VERSAO).
 
+-ignore_xref([{start_link, 0}]).
+
 -behaviour(gen_server).
 
 %% API

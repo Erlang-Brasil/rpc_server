@@ -6,6 +6,8 @@
 -define(MODULO_VERSAO, 1).
 -vsn(?MODULO_VERSAO).
 
+-ignore_xref([{start_link, 0}]).
+
 -behaviour(supervisor).
 
 -export([start_link/0]).
