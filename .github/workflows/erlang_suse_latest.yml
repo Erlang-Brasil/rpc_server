@@ -19,6 +19,8 @@ jobs:
     steps:
     - name: Checkout código
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Adicionado para buscar todo o histórico
 
     # PASSO DE INSTALAÇÃO MOVIDO PARA ANTES DO DEBUG DO CHECKOUT
     - name: Instalar dependências do sistema e Erlang
@@ -40,6 +42,11 @@ jobs:
     # AGORA O DEBUG DO CHECKOUT PODE USAR O GIT
     - name: Debug Verificar Checkout Inicial
       run: |
+        echo "Diretório atual: $(pwd)"
+        echo "Listando conteúdo do diretório atual:"
+        ls -la
+        echo "Verificando se .git existe:"
+        ls -la .git || echo ".git não encontrado ou não é um diretório"
         echo "Commit atual:"
         git log -1 --pretty=%H%n%s
         echo "Verificando o código fonte de src/shell/rpc_server_shell_instance.erl ANTES de qualquer compilação ou cache:"
