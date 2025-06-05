@@ -35,7 +35,12 @@ jobs:
         wget https://github.com/erlang/rebar3/releases/download/3.25.0/rebar3
         chmod +x rebar3
         ./rebar3 local install # Instala o rebar3 em ~/.cache/rebar3/bin
-        echo "$HOME/.cache/rebar3/bin" >> $GITHUB_PATH # Adiciona o rebar3 ao PATH
+
+        # Adiciona rebar3 ao PATH para o script atual e passos subsequentes
+        echo "$HOME/.cache/rebar3/bin" >> $GITHUB_PATH
+        export PATH="$HOME/.cache/rebar3/bin:$PATH"
+
+        # Verifica a instalação do rebar3
         rebar3 --version
       shell: bash
 
