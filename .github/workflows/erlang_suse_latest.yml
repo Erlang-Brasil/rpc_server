@@ -84,14 +84,10 @@ jobs:
     # E EVITAR INTERFERÊNCIA DE CACHES DESATUALIZADOS DO REBAR3 OU _BUILD.
 
     - name: Instalar Rebar3 e configurar ENV var
-      id: install_rebar3 # Renomeado para clareza, já que o cache não é mais usado para isso
+      id: install_rebar3 
       run: |
-        REBAR3_VERSION="3.25.0" # Considere usar uma versão mais recente se disponível/necessário
-        # Instala rebar3 em um local dentro do GITHUB_WORKSPACE para evitar problemas de permissão
-        # e garantir que seja limpo entre as execuções, se não for $HOME.
-        # No entanto, $HOME/.cache é um local comum. Se houver problemas de persistência,
-        # instalar em $GITHUB_WORKSPACE/rebar3_temp_install_dir pode ser uma alternativa.
-        REBAR3_INSTALL_TARGET_DIR="$HOME/.cache/rebar3" # Diretório base para a instalação do rebar3
+        REBAR3_VERSION="3.25.0" 
+        REBAR3_INSTALL_TARGET_DIR="$HOME/.cache/rebar3" 
         REBAR3_BIN_DIR="$REBAR3_INSTALL_TARGET_DIR/bin"
         REBAR3_EXEC="$REBAR3_BIN_DIR/rebar3"
 
@@ -107,14 +103,6 @@ jobs:
         wget -q https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 -O rebar3
         chmod +x rebar3
         echo "Executando './rebar3 local install' (instalando em $REBAR3_INSTALL_TARGET_DIR)..."
-        # O 'local install' do rebar3 geralmente instala em ~/.cache/rebar3/bin por padrão.
-        # Para forçar a instalação no REBAR3_BIN_DIR, precisaríamos de uma abordagem diferente
-        # ou garantir que o 'local install' use o $HOME correto dentro do container.
-        # A maneira mais simples é copiar o executável baixado diretamente.
-        cp rebar3 "$REBAR3_EXEC"
-        # ./rebar3 local install # Esta linha pode ser desnecessária se copiarmos diretamente.
-        # Vamos manter o local install por enquanto, ele é mais robusto para pegar a estrutura correta.
-        # No entanto, o rebar3 local install já coloca em $HOME/.cache/rebar3/bin, que é o nosso REBAR3_EXEC
         ./rebar3 local install 
 
         cd "$ORIGINAL_DIR"
@@ -122,11 +110,6 @@ jobs:
         
         if [ ! -f "$REBAR3_EXEC" ]; then
           echo "ERRO CRÍTICO: Falha ao instalar o Rebar3 em $REBAR3_EXEC."
-          # Tentar uma cópia direta como fallback se 'local install' não funcionar como esperado
-          echo "Tentando copiar o executável do Rebar3 diretamente para $REBAR3_EXEC..."
-          # Re-download e cópia direta se o local install falhou
-          # (Essa lógica de fallback pode ser complexa, melhor garantir que o 'local install' funcione)
-          # Por agora, vamos confiar no 'local install'. Se persistir o erro, revisamos.
           exit 1
         fi
         echo "Rebar3 $REBAR3_VERSION instalado com sucesso em $REBAR3_EXEC."
@@ -191,13 +174,14 @@ jobs:
       shell: bash
 
     - name: Executar análise estática (Xref e Dialyzer)
+      id: static_analysis # Adicionado ID para referenciar no upload do crashdump
       run: |
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Análise Estática': $PATH"
         
         echo "LIMPANDO TUDO E RECOMPILANDO ANTES DA ANÁLISE ESTÁTICA"
-        rebar3 clean --all # Garante que não há artefatos antigos de compilação
-        rebar3 compile    # Compila o código que foi feito checkout e limpo
+        rebar3 clean --all 
+        rebar3 compile    
 
         echo "Verificando o código fonte de src/shell/rpc_server_shell_instance.erl IMEDIATAMENTE ANTES do XREF:"
         SOURCE_FILE_TO_CHECK_AGAIN="src/shell/rpc_server_shell_instance.erl"
@@ -214,12 +198,11 @@ jobs:
         XREF_STATUS=$?
         if [ $XREF_STATUS -ne 0 ]; then
           echo "rebar3 xref falhou com status $XREF_STATUS (ou emitiu avisos tratados como erros)"
-          # Considerar sair se xref falhar e for crítico: exit $XREF_STATUS
         fi
         echo "rebar3 xref concluído."
 
-        echo "Executando rebar3 dialyzer..."
-        rebar3 dialyzer
+        echo "Executando rebar3 dialyzer com DIAGNOSTIC=1..."
+        DIAGNOSTIC=1 rebar3 dialyzer
         DIALYZER_STATUS=$?
         if [ $DIALYZER_STATUS -ne 0 ]; then
           echo "rebar3 dialyzer falhou com status $DIALYZER_STATUS"
@@ -227,6 +210,17 @@ jobs:
         fi
         echo "rebar3 dialyzer concluído com sucesso."
       shell: bash
+
+    - name: Upload rebar3 crashdump (se houver falha na Análise Estática)
+      if: steps.static_analysis.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: rebar3-crashdump-static-analysis-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}
+        path: |
+          rebar3.crashdump
+          ./rebar3.crashdump
+          _build/default/rebar3.crashdump 
+        if-no-files-found: ignore
 
     - name: Rodar testes
       id: run_tests
@@ -243,11 +237,10 @@ jobs:
       if: steps.run_tests.outcome == 'failure'
       uses: actions/upload-artifact@v4
       with:
-        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}
+        name: rebar3-crashdump-tests-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}
         path: |
           rebar3.crashdump
           ./rebar3.crashdump
           _build/default/rebar3.crashdump
           _build/test/rebar3.crashdump
         if-no-files-found: ignore
-
