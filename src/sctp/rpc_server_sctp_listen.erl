@@ -7,7 +7,7 @@
 
 -vsn(?MODULO_VERSAO).
 
--ignore_xref([{start_link, 0}]).
+-ignore_xref([{start_link, 1}]).
 
 -behaviour(gen_server).
 
