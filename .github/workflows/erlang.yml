@@ -35,7 +35,6 @@ jobs:
 
         REBAR3_BIN_DIR="$HOME/.cache/rebar3/bin"
         # Define REBAR3_BIN_DIR como uma variável de ambiente para os próximos passos
-        # EM VEZ DE USAR GITHUB_PATH
         echo "REBAR3_BIN_DIR=${REBAR3_BIN_DIR}" >> $GITHUB_ENV
 
         # Exporta o PATH para uso no rebar3 --version deste passo
@@ -49,16 +48,31 @@ jobs:
     - name: Compilar projeto
       run: |
         # Adiciona o diretório do rebar3 ao PATH no início deste passo
-        # REBAR3_BIN_DIR está disponível como env var devido ao GITHUB_ENV
         export PATH="${REBAR3_BIN_DIR}:$PATH"
         echo "PATH atualizado no passo 'Compilar projeto': $PATH"
         rebar3 compile
       shell: bash
 
     - name: Rodar testes
+      id: run_tests # Adiciona um ID para referenciar o resultado do passo
       run: |
         # Adiciona o diretório do rebar3 ao PATH no início deste passo
         export PATH="${REBAR3_BIN_DIR}:$PATH"
         echo "PATH atualizado no passo 'Rodar testes': $PATH"
-        rebar3 do eunit, ct
+        # Executa os testes com DIAGNOSTIC=1 para obter mais informações em caso de erro
+        DIAGNOSTIC=1 rebar3 do eunit, ct
       shell: bash
+
+    - name: Upload rebar3 crashdump (se houver falha nos testes)
+      # Este passo só será executado se o passo 'Rodar testes' falhar
+      if: steps.run_tests.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: rebar3-crashdump
+        # O rebar3.crashdump geralmente é criado no diretório raiz do projeto
+        # ou no diretório _build. Verifique a saída do rebar3 se não encontrar.
+        path: |
+          rebar3.crashdump
+          _build/default/rebar3.crashdump
+          _build/test/rebar3.crashdump 
+        if-no-files-found: ignore # Não falhar o workflow se o arquivo não for encontrado
