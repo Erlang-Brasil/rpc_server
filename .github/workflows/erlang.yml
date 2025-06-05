@@ -23,17 +23,19 @@ jobs:
     - name: Instalar dependências do sistema e Erlang
       run: |
         zypper refresh
-        # Install Erlang and other necessary tools like git and wget
+        # Instalar SOMENTE Erlang e outras ferramentas necessárias como git e wget
+        # REBAR3 FOI REMOVIDO DESTA LINHA
         zypper install -y erlang git wget
         erl -version
       shell: bash
 
     - name: Instalar Rebar3
       run: |
-        wget https://github.com/erlang/rebar3/releases/download/3.22.1/rebar3 # Fetches a specific version, check for the latest
+        # Busca a versão 3.25.0 do rebar3 (ou a mais recente)
+        wget https://github.com/erlang/rebar3/releases/download/3.25.0/rebar3
         chmod +x rebar3
-        ./rebar3 local install # Installs rebar3 to ~/.cache/rebar3/bin
-        echo "$HOME/.cache/rebar3/bin" >> $GITHUB_PATH # Adds rebar3 to PATH
+        ./rebar3 local install # Instala o rebar3 em ~/.cache/rebar3/bin
+        echo "$HOME/.cache/rebar3/bin" >> $GITHUB_PATH # Adiciona o rebar3 ao PATH
         rebar3 --version
       shell: bash
 
