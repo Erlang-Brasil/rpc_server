@@ -27,13 +27,16 @@ jobs:
       id: setup_erlang
       run: |
         zypper refresh
-        zypper install -y erlang git wget bash which # git é instalado aqui
+        # Adicionado findutils para o comando find
+        zypper install -y erlang git wget bash which findutils # git é instalado aqui
         echo "Verificando presença do bash:"
         which bash
         ls -l /bin/bash
         echo "Verificando presença do git:"
         which git
         git --version
+        echo "Verificando presença do find:"
+        which find
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
         echo "Versão do Erlang/OTP instalada:"
         erl -version
@@ -43,12 +46,36 @@ jobs:
     - name: Debug Verificar Checkout Inicial
       run: |
         echo "Diretório atual: $(pwd)"
-        echo "Listando conteúdo do diretório atual:"
+        echo "Variável GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+        echo "Listando conteúdo do diretório atual ($GITHUB_WORKSPACE):"
         ls -la
-        echo "Verificando se .git existe:"
-        ls -la .git || echo ".git não encontrado ou não é um diretório"
-        echo "Commit atual:"
-        git log -1 --pretty=%H%n%s
+        echo "---"
+        echo "Verificando se .git existe em $(pwd)/.git:"
+        if [ -d ".git" ]; then
+          echo ".git encontrado em $(pwd)/.git"
+          ls -la .git
+        else
+          echo ".git NÃO encontrado em $(pwd)/.git"
+        fi
+        echo "---"
+        echo "Tentando encontrar diretórios .git a partir de /__w:"
+        find /__w -name ".git" -type d -ls 2>/dev/null || echo "Nenhum diretório .git encontrado via find em /__w"
+        echo "---"
+        echo "Saída do git status:"
+        git status || echo "git status falhou"
+        echo "---"
+        echo "Saída do git rev-parse --is-inside-work-tree:"
+        git rev-parse --is-inside-work-tree || echo "git rev-parse --is-inside-work-tree falhou"
+        echo "---"
+        echo "Saída do git rev-parse --git-dir:"
+        git rev-parse --git-dir || echo "git rev-parse --git-dir falhou"
+        echo "---"
+        echo "Saída do git rev-parse --show-toplevel:"
+        git rev-parse --show-toplevel || echo "git rev-parse --show-toplevel falhou"
+        echo "---"
+        echo "Commit atual (git log):"
+        git log -1 --pretty=%H%n%s || echo "git log falhou"
+        echo "---"
         echo "Verificando o código fonte de src/shell/rpc_server_shell_instance.erl ANTES de qualquer compilação ou cache:"
         SOURCE_FILE_TO_CHECK="src/shell/rpc_server_shell_instance.erl"
         if [ -f "$SOURCE_FILE_TO_CHECK" ]; then
