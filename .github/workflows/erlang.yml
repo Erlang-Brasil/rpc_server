@@ -34,53 +34,31 @@ jobs:
         ./rebar3 local install # Instala o rebar3 em ~/.cache/rebar3/bin
 
         REBAR3_BIN_DIR="$HOME/.cache/rebar3/bin"
-        # Adiciona o diretório do rebar3 ao GITHUB_PATH para os próximos passos
-        echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
+        # Define REBAR3_BIN_DIR como uma variável de ambiente para os próximos passos
+        # EM VEZ DE USAR GITHUB_PATH
+        echo "REBAR3_BIN_DIR=${REBAR3_BIN_DIR}" >> $GITHUB_ENV
+
         # Exporta o PATH para uso no rebar3 --version deste passo
         export PATH="${REBAR3_BIN_DIR}:$PATH"
 
         echo "Rebar3 bin directory: ${REBAR3_BIN_DIR}"
         echo "PATH neste passo (Instalar Rebar3): $PATH"
         rebar3 --version
-      shell: bash # Este passo funcionou antes, então bash estava acessível aqui
-
-    - name: Debug PATH e Bash para o próximo passo
-      # Usamos 'sh' aqui porque 'bash' pode não estar no PATH quebrado
-      # Este passo tenta descobrir qual é o PATH antes do passo "Compilar projeto"
-      shell: sh
-      run: |
-        echo "--- DEBUG STEP ---"
-        echo "PATH recebido pelo runner para este passo (sh): $PATH"
-        echo "Verificando existência do bash:"
-        if [ -x /bin/bash ]; then
-          echo "Bash encontrado em /bin/bash"
-        else
-          echo "/bin/bash não encontrado ou não executável"
-        fi
-        if [ -x /usr/bin/bash ]; then
-          echo "Bash encontrado em /usr/bin/bash"
-        else
-          echo "/usr/bin/bash não encontrado ou não executável"
-        fi
-        echo "Resultado de 'which bash' (se 'which' estiver disponível):"
-        which bash || echo "'which bash' falhou ou bash não está no PATH"
-        echo "--- FIM DEBUG STEP ---"
+      shell: bash
 
     - name: Compilar projeto
-      # Se o debug mostrar que /bin/bash existe, mas o PATH está quebrado,
-      # podemos tentar usar o caminho completo para o bash.
-      # Primeiro, tente como está. Se falhar, tente a opção comentada abaixo.
       run: |
-        echo "PATH no início do passo 'Compilar projeto': $PATH"
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        # REBAR3_BIN_DIR está disponível como env var devido ao GITHUB_ENV
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Compilar projeto': $PATH"
         rebar3 compile
       shell: bash
-      # Alternativa se o PATH estiver quebrado mas /bin/bash existir:
-      # shell: /bin/bash --noprofile --norc -e -o pipefail {0}
 
     - name: Rodar testes
       run: |
-        echo "PATH no início do passo 'Rodar testes': $PATH"
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Rodar testes': $PATH"
         rebar3 do eunit, ct
       shell: bash
-      # Alternativa se o PATH estiver quebrado mas /bin/bash existir:
-      # shell: /bin/bash --noprofile --norc -e -o pipefail {0}
