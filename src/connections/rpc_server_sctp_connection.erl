@@ -7,6 +7,8 @@
 -vsn(?MODULO_VERSAO).
 -behaviour(gen_server).
 
+-ignore_xref([{start_link, 1}]).
+
 -record(state, {
     clientSocket :: socket() | undefined,
     listenSocket :: socket() | undefined,
