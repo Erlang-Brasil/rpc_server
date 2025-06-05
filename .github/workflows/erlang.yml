@@ -21,12 +21,13 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Instalar dependências do sistema e Erlang
-      id: setup_erlang # Adicionado id para referenciar a output
+      id: setup_erlang 
       run: |
         zypper refresh
-        zypper install -y erlang git wget
-        # Extrai e armazena a versão do Erlang/OTP para usar na chave de cache
-        # Remove aspas da string da versão do OTP (ex: "25" -> 25)
+        zypper install -y erlang git wget bash # Garantir que bash esteja instalado explicitamente
+        echo "Verificando presença do bash:"
+        which bash
+        ls -l /bin/bash
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
         echo "Versão do Erlang/OTP instalada:"
         erl -version
@@ -39,82 +40,65 @@ jobs:
         path: |
           ~/.cache/rebar3
           _build
-        # Chave de cache mais específica incluindo a versão do Erlang/OTP
         key: ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-${{ hashFiles('**/rebar.lock') }}
-        # Chaves de restauração mais genéricas
         restore-keys: |
           ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-
           ${{ runner.os }}-opensuse-erlang-
           ${{ runner.os }}-opensuse-
 
-    - name: Instalar Rebar3 (se não estiver no cache) e adicionar ao PATH
+    - name: Instalar Rebar3 (se não estiver no cache) e configurar ENV var
       run: |
-        REBAR3_VERSION="3.25.0" # Especifique a versão desejada do Rebar3
-        REBAR3_CACHE_BIN_DIR="$HOME/.cache/rebar3/bin" # Diretório padrão de instalação do 'rebar3 local install'
+        REBAR3_VERSION="3.25.0" 
+        REBAR3_CACHE_BIN_DIR="$HOME/.cache/rebar3/bin" 
         REBAR3_EXEC="$REBAR3_CACHE_BIN_DIR/rebar3"
 
-        # Garante que o diretório base do cache do rebar3 exista, pois 'local install' o usa.
-        mkdir -p "$HOME/.cache/rebar3"
+        mkdir -p "$REBAR3_CACHE_BIN_DIR" # Garante que o diretório de destino do binário do rebar3 exista
 
         if [ ! -f "$REBAR3_EXEC" ]; then
           echo "Rebar3 não encontrado em $REBAR3_EXEC. Instalando..."
           
-          TEMP_WORK_DIR=$(mktemp -d) # Cria um diretório de trabalho temporário
+          TEMP_WORK_DIR=$(mktemp -d) 
           echo "Diretório de trabalho temporário para instalação do Rebar3: $TEMP_WORK_DIR"
           
-          ORIGINAL_DIR=$(pwd) # Salva o diretório atual
-          cd "$TEMP_WORK_DIR" # Entra no diretório temporário
+          ORIGINAL_DIR=$(pwd) 
+          cd "$TEMP_WORK_DIR" 
           
           echo "Baixando Rebar3 ($REBAR3_VERSION) para $TEMP_WORK_DIR/rebar3..."
-          # Baixa o rebar3 com o nome 'rebar3'
           wget -q https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 -O rebar3
           chmod +x rebar3
           
           echo "Executando './rebar3 local install' a partir de $TEMP_WORK_DIR..."
-          # Este comando faz com que o script ./rebar3 se instale em $HOME/.cache/rebar3/bin/rebar3
+          # Este comando instala o rebar3 em $HOME/.cache/rebar3/bin/rebar3
           ./rebar3 local install 
           
-          cd "$ORIGINAL_DIR" # Retorna ao diretório original
-          rm -rf "$TEMP_WORK_DIR" # Remove o diretório temporário
+          cd "$ORIGINAL_DIR" 
+          rm -rf "$TEMP_WORK_DIR" 
           
           if [ -f "$REBAR3_EXEC" ]; then
             echo "Rebar3 $REBAR3_VERSION instalado com sucesso em $REBAR3_EXEC."
           else
             echo "ERRO CRÍTICO: Falha ao instalar o Rebar3 em $REBAR3_EXEC."
-            echo "Verifique se o diretório $REBAR3_CACHE_BIN_DIR existe e tem permissões corretas."
-            if [ -d "$REBAR3_CACHE_BIN_DIR" ]; then
-              echo "Conteúdo de $REBAR3_CACHE_BIN_DIR:"
-              ls -la "$REBAR3_CACHE_BIN_DIR"
-            else
-              echo "$REBAR3_CACHE_BIN_DIR não foi criado."
-            fi
             exit 1
           fi
         else
           echo "Rebar3 encontrado em $REBAR3_EXEC (provavelmente restaurado do cache)."
         fi
         
-        echo "Adicionando $REBAR3_CACHE_BIN_DIR ao GITHUB_PATH para passos subsequentes."
-        echo "$REBAR3_CACHE_BIN_DIR" >> $GITHUB_PATH
-        
+        # Define a variável de ambiente para os próximos passos
+        echo "REBAR3_INSTALL_DIR=${REBAR3_CACHE_BIN_DIR}" >> $GITHUB_ENV
+        echo "REBAR3_INSTALL_DIR configurado para: ${REBAR3_CACHE_BIN_DIR}"
+
         echo "Verificando a versão do Rebar3 instalado diretamente em $REBAR3_EXEC:"
-        if [ -f "$REBAR3_EXEC" ]; then
-          "$REBAR3_EXEC" --version
-        else
-          # Esta condição não deveria ser alcançada se a lógica acima estiver correta
-          echo "ERRO: Rebar3 não foi encontrado em $REBAR3_EXEC após a tentativa de instalação/cache."
-          exit 1
-        fi
-        echo "O comando 'rebar3' estará disponível no PATH para os próximos passos via GITHUB_PATH."
+        "$REBAR3_EXEC" --version
       shell: bash
 
     - name: Compilar projeto (incluindo dependências se não cacheadas)
       run: |
-        # Rebar3 deve estar no PATH devido ao GITHUB_PATH configurado no passo anterior
-        echo "PATH atual no passo 'Compilar projeto': $PATH" 
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        export PATH="${REBAR3_INSTALL_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Compilar projeto': $PATH" 
         echo "Verificando localização do rebar3:"
         which rebar3
-        echo "Verificando rebar3 antes de compilar:"
         rebar3 --version
         
         echo "Limpando compilações anteriores..."
@@ -126,19 +110,19 @@ jobs:
 
     - name: Executar análise estática (Xref e Dialyzer)
       run: |
-        # Rebar3 deve estar no PATH
-        echo "Executando Xref..."
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        export PATH="${REBAR3_INSTALL_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Análise Estática': $PATH"
         rebar3 xref
-        
-        echo "Executando Dialyzer (pode demorar na primeira vez ou após mudança na versão do Erlang/OTP)..."
         rebar3 dialyzer 
       shell: bash
 
     - name: Rodar testes
       id: run_tests
       run: |
-        # Rebar3 deve estar no PATH
-        echo "Executando testes (EUnit e Common Test)..."
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        export PATH="${REBAR3_INSTALL_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Rodar testes': $PATH"
         DIAGNOSTIC=1 rebar3 do eunit, ct
       shell: bash
 
