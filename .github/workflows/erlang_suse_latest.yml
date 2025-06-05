@@ -109,13 +109,73 @@ jobs:
         rebar3 compile
       shell: bash
 
+    # NOVO PASSO DE DEPURAÇÃO ADICIONADO AQUI
+    - name: Debug Verificar arquivos e artefatos antes da analise
+      run: |
+        # Adiciona o diretório do rebar3 ao PATH
+        export PATH="${REBAR3_INSTALL_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Debug Verificar arquivos': $PATH"
+
+        echo "Limpando compilações anteriores (novamente para garantir)..."
+        rebar3 clean
+
+        echo "Compilando o projeto (novamente para garantir artefatos frescos)..."
+        rebar3 compile
+        
+        # Define o caminho para o arquivo fonte e o arquivo beam
+        # Certifique-se que 'rpc_server' é o nome correto da sua aplicação OTP
+        # se o seu projeto não for uma aplicação OTP padrão, ajuste o caminho do BEAM file.
+        SOURCE_FILE="src/shell/rpc_server_shell_instance.erl"
+        BEAM_FILE_DIR="_build/default/lib/rpc_server/ebin" # Ajuste 'rpc_server' se for o nome da sua app
+        BEAM_FILE="${BEAM_FILE_DIR}/rpc_server_shell_instance.beam"
+
+        echo "Conteúdo de $SOURCE_FILE:"
+        if [ -f "$SOURCE_FILE" ]; then
+          cat "$SOURCE_FILE"
+        else
+          echo "Arquivo fonte $SOURCE_FILE não encontrado."
+          echo "Verifique se o caminho está correto e se o arquivo existe no checkout."
+        fi
+        
+        echo "Verificando BEAM file: $BEAM_FILE"
+        if [ -d "$BEAM_FILE_DIR" ]; then
+          ls -la "$BEAM_FILE_DIR"
+          if [ -f "$BEAM_FILE" ]; then
+            echo "Detalhes do BEAM file ($BEAM_FILE):"
+            ls -l "$BEAM_FILE"
+          else
+            echo "Arquivo BEAM $BEAM_FILE não encontrado no diretório $BEAM_FILE_DIR."
+            echo "Possíveis causas: erro de compilação, nome da aplicação OTP incorreto no caminho, ou o módulo não pertence à aplicação 'rpc_server'."
+          fi
+        else
+          echo "Diretório de BEAM files $BEAM_FILE_DIR não encontrado."
+          echo "A compilação pode ter falhado ou a estrutura de diretórios não é a esperada."
+        fi
+      shell: bash
+
     - name: Executar análise estática (Xref e Dialyzer)
       run: |
         # Adiciona o diretório do rebar3 ao PATH no início deste passo
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Análise Estática': $PATH"
+        
+        echo "Executando rebar3 xref..."
         rebar3 xref
+        XREF_STATUS=$?
+        if [ $XREF_STATUS -ne 0 ]; then
+          echo "rebar3 xref falhou com status $XREF_STATUS"
+          # exit $XREF_STATUS # Descomente se quiser que o build pare aqui em caso de falha do xref
+        fi
+        echo "rebar3 xref concluído."
+
+        echo "Executando rebar3 dialyzer..."
         rebar3 dialyzer
+        DIALYZER_STATUS=$?
+        if [ $DIALYZER_STATUS -ne 0 ]; then
+          echo "rebar3 dialyzer falhou com status $DIALYZER_STATUS"
+          exit $DIALYZER_STATUS # Mantém a falha do build se o dialyzer falhar
+        fi
+        echo "rebar3 dialyzer concluído com sucesso."
       shell: bash
 
     - name: Rodar testes
