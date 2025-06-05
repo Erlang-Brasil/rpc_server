@@ -223,13 +223,7 @@ jobs:
         rebar3 compile
 
         echo "Executando rebar3 dialyzer com DIAGNOSTIC=1..."
-        DIAGNOSTIC=1 rebar3 dialyzer
-        DIALYZER_STATUS=$?
-        if [ $DIALYZER_STATUS -ne 0 ]; then
-          echo "rebar3 dialyzer falhou com status $DIALYZER_STATUS"
-          exit $DIALYZER_STATUS
-        fi
-        echo "rebar3 dialyzer concluído com sucesso."
+        rebar3 dialyzer
       shell: bash
 
     - name: Upload rebar3 crashdump (se houver falha no Dialyzer)
