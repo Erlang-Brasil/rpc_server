@@ -20,11 +20,24 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
 
+    # NOVO PASSO: Verificar o código imediatamente após o checkout
+    - name: Debug Verificar Checkout Inicial
+      run: |
+        echo "Commit atual:"
+        git log -1 --pretty=%H%n%s
+        echo "Verificando o código fonte de src/shell/rpc_server_shell_instance.erl ANTES de qualquer compilação ou cache:"
+        SOURCE_FILE_TO_CHECK="src/shell/rpc_server_shell_instance.erl"
+        if [ -f "$SOURCE_FILE_TO_CHECK" ]; then
+          cat "$SOURCE_FILE_TO_CHECK"
+        else
+          echo "Arquivo fonte $SOURCE_FILE_TO_CHECK não encontrado no checkout inicial."
+        fi
+      shell: bash
+
     - name: Instalar dependências do sistema e Erlang
       id: setup_erlang
       run: |
         zypper refresh
-        # Adicionado 'which' à lista de pacotes para instalação
         zypper install -y erlang git wget bash which
         echo "Verificando presença do bash:"
         which bash
@@ -41,121 +54,102 @@ jobs:
         path: |
           ~/.cache/rebar3
           _build
-        key: ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-${{ hashFiles('**/rebar.lock') }}
+        # Chave de cache atualizada para incluir hash dos arquivos .erl e .hrl
+        key: ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-${{ hashFiles('**/rebar.lock') }}-${{ hashFiles('**/src/**/*.erl', '**/src/**/*.hrl', '**/include/**/*.hrl') }}
         restore-keys: |
+          ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-${{ hashFiles('**/rebar.lock') }}-
           ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-
           ${{ runner.os }}-opensuse-erlang-
           ${{ runner.os }}-opensuse-
 
     - name: Instalar Rebar3 (se não estiver no cache) e configurar ENV var
       run: |
-        REBAR3_VERSION="3.25.0"
+        REBAR3_VERSION="3.25.0" # Considere usar uma versão mais recente se disponível/necessário
         REBAR3_CACHE_BIN_DIR="$HOME/.cache/rebar3/bin"
         REBAR3_EXEC="$REBAR3_CACHE_BIN_DIR/rebar3"
 
-        mkdir -p "$REBAR3_CACHE_BIN_DIR" # Garante que o diretório de destino do binário do rebar3 exista
+        mkdir -p "$REBAR3_CACHE_BIN_DIR"
 
         if [ ! -f "$REBAR3_EXEC" ]; then
           echo "Rebar3 não encontrado em $REBAR3_EXEC. Instalando..."
-
           TEMP_WORK_DIR=$(mktemp -d)
-          echo "Diretório de trabalho temporário para instalação do Rebar3: $TEMP_WORK_DIR"
-
           ORIGINAL_DIR=$(pwd)
           cd "$TEMP_WORK_DIR"
-
           echo "Baixando Rebar3 ($REBAR3_VERSION) para $TEMP_WORK_DIR/rebar3..."
           wget -q https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 -O rebar3
           chmod +x rebar3
-
           echo "Executando './rebar3 local install' a partir de $TEMP_WORK_DIR..."
-          # Este comando instala o rebar3 em $HOME/.cache/rebar3/bin/rebar3
           ./rebar3 local install
-
           cd "$ORIGINAL_DIR"
           rm -rf "$TEMP_WORK_DIR"
-
-          if [ -f "$REBAR3_EXEC" ]; then
-            echo "Rebar3 $REBAR3_VERSION instalado com sucesso em $REBAR3_EXEC."
-          else
+          if [ ! -f "$REBAR3_EXEC" ]; then
             echo "ERRO CRÍTICO: Falha ao instalar o Rebar3 em $REBAR3_EXEC."
             exit 1
           fi
+          echo "Rebar3 $REBAR3_VERSION instalado com sucesso em $REBAR3_EXEC."
         else
           echo "Rebar3 encontrado em $REBAR3_EXEC (provavelmente restaurado do cache)."
         fi
-
-        # Define a variável de ambiente para os próximos passos
         echo "REBAR3_INSTALL_DIR=${REBAR3_CACHE_BIN_DIR}" >> $GITHUB_ENV
         echo "REBAR3_INSTALL_DIR configurado para: ${REBAR3_CACHE_BIN_DIR}"
-
-        echo "Verificando a versão do Rebar3 instalado diretamente em $REBAR3_EXEC:"
         "$REBAR3_EXEC" --version
       shell: bash
 
     - name: Compilar projeto (incluindo dependências se não cacheadas)
       run: |
-        # Adiciona o diretório do rebar3 ao PATH no início deste passo
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Compilar projeto': $PATH"
-        echo "Verificando localização do rebar3:"
         which rebar3
         rebar3 --version
-
         echo "Limpando compilações anteriores..."
         rebar3 clean
-
         echo "Compilando o projeto..."
         rebar3 compile
       shell: bash
 
-    # NOVO PASSO DE DEPURAÇÃO ADICIONADO AQUI
     - name: Debug Verificar arquivos e artefatos antes da analise
       run: |
-        # Adiciona o diretório do rebar3 ao PATH
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Debug Verificar arquivos': $PATH"
 
         echo "Limpando compilações anteriores (novamente para garantir)..."
         rebar3 clean
-
         echo "Compilando o projeto (novamente para garantir artefatos frescos)..."
         rebar3 compile
         
-        # Define o caminho para o arquivo fonte e o arquivo beam
-        # Certifique-se que 'rpc_server' é o nome correto da sua aplicação OTP
-        # se o seu projeto não for uma aplicação OTP padrão, ajuste o caminho do BEAM file.
         SOURCE_FILE="src/shell/rpc_server_shell_instance.erl"
-        BEAM_FILE_DIR="_build/default/lib/rpc_server/ebin" # Ajuste 'rpc_server' se for o nome da sua app
+        # Ajuste 'rpc_server' se o nome da sua aplicação OTP for diferente
+        APP_NAME="rpc_server" 
+        BEAM_FILE_DIR="_build/default/lib/${APP_NAME}/ebin"
         BEAM_FILE="${BEAM_FILE_DIR}/rpc_server_shell_instance.beam"
+        MODULE_NAME="rpc_server_shell_instance"
 
-        echo "Conteúdo de $SOURCE_FILE:"
+        echo "Conteúdo de $SOURCE_FILE (após compilação neste passo):"
         if [ -f "$SOURCE_FILE" ]; then
           cat "$SOURCE_FILE"
         else
           echo "Arquivo fonte $SOURCE_FILE não encontrado."
-          echo "Verifique se o caminho está correto e se o arquivo existe no checkout."
         fi
         
         echo "Verificando BEAM file: $BEAM_FILE"
         if [ -d "$BEAM_FILE_DIR" ]; then
+          echo "Listando conteúdo de $BEAM_FILE_DIR:"
           ls -la "$BEAM_FILE_DIR"
           if [ -f "$BEAM_FILE" ]; then
-            echo "Detalhes do BEAM file ($BEAM_FILE):"
+            echo "Detalhes do BEAM file ($BEAM_FILE) (timestamp, tamanho):"
             ls -l "$BEAM_FILE"
+            echo "Verificando de onde o Erlang carregaria o módulo $MODULE_NAME:"
+            erl -noshell -eval "io:format(\"code:which(~s) -> ~p~n\", [\"${MODULE_NAME}\", code:which(${MODULE_NAME})]), halt()." || echo "Falha ao verificar code:which"
           else
             echo "Arquivo BEAM $BEAM_FILE não encontrado no diretório $BEAM_FILE_DIR."
-            echo "Possíveis causas: erro de compilação, nome da aplicação OTP incorreto no caminho, ou o módulo não pertence à aplicação 'rpc_server'."
           fi
         else
           echo "Diretório de BEAM files $BEAM_FILE_DIR não encontrado."
-          echo "A compilação pode ter falhado ou a estrutura de diretórios não é a esperada."
         fi
       shell: bash
 
     - name: Executar análise estática (Xref e Dialyzer)
       run: |
-        # Adiciona o diretório do rebar3 ao PATH no início deste passo
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Análise Estática': $PATH"
         
@@ -163,17 +157,18 @@ jobs:
         rebar3 xref
         XREF_STATUS=$?
         if [ $XREF_STATUS -ne 0 ]; then
-          echo "rebar3 xref falhou com status $XREF_STATUS"
-          # exit $XREF_STATUS # Descomente se quiser que o build pare aqui em caso de falha do xref
+          echo "rebar3 xref falhou com status $XREF_STATUS (ou emitiu avisos tratados como erros)"
+          # Considerar sair se xref falhar e for crítico: exit $XREF_STATUS
         fi
         echo "rebar3 xref concluído."
 
         echo "Executando rebar3 dialyzer..."
+        # Pode ser útil construir a PLT explicitamente se houver problemas, ex: rebar3 dialyzer build
         rebar3 dialyzer
         DIALYZER_STATUS=$?
         if [ $DIALYZER_STATUS -ne 0 ]; then
           echo "rebar3 dialyzer falhou com status $DIALYZER_STATUS"
-          exit $DIALYZER_STATUS # Mantém a falha do build se o dialyzer falhar
+          exit $DIALYZER_STATUS
         fi
         echo "rebar3 dialyzer concluído com sucesso."
       shell: bash
@@ -181,7 +176,6 @@ jobs:
     - name: Rodar testes
       id: run_tests
       run: |
-        # Adiciona o diretório do rebar3 ao PATH no início deste passo
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Rodar testes': $PATH"
         DIAGNOSTIC=1 rebar3 do eunit, ct
