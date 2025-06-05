@@ -120,6 +120,7 @@ jobs:
       shell: bash
 
     - name: Compilar projeto
+      id: compile_project # Adicionado ID para referência futura se necessário
       run: |
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Compilar projeto': $PATH"
@@ -132,6 +133,8 @@ jobs:
       shell: bash
 
     - name: Debug Verificar arquivos e artefatos antes da analise
+      # Este passo de debug pode ser redundante se o problema principal foi resolvido,
+      # mas é mantido por enquanto para observação.
       run: |
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
         echo "PATH atualizado no passo 'Debug Verificar arquivos': $PATH"
@@ -173,13 +176,13 @@ jobs:
         fi
       shell: bash
 
-    - name: Executar análise estática (Xref e Dialyzer)
-      id: static_analysis # Adicionado ID para referenciar no upload do crashdump
+    - name: Executar Xref
+      id: xref_analysis
       run: |
         export PATH="${REBAR3_INSTALL_DIR}:$PATH"
-        echo "PATH atualizado no passo 'Análise Estática': $PATH"
+        echo "PATH atualizado no passo 'Executar Xref': $PATH"
         
-        echo "LIMPANDO TUDO E RECOMPILANDO ANTES DA ANÁLISE ESTÁTICA"
+        echo "LIMPANDO TUDO E RECOMPILANDO ANTES DO XREF"
         rebar3 clean --all 
         rebar3 compile    
 
@@ -198,8 +201,26 @@ jobs:
         XREF_STATUS=$?
         if [ $XREF_STATUS -ne 0 ]; then
           echo "rebar3 xref falhou com status $XREF_STATUS (ou emitiu avisos tratados como erros)"
+          # Se xref_warnings_as_errors estiver ativo no rebar.config ou se qualquer aviso do Xref
+          # deve ser considerado um erro fatal, então o build deve falhar.
+          exit $XREF_STATUS
         fi
-        echo "rebar3 xref concluído."
+        echo "rebar3 xref concluído com sucesso."
+      shell: bash
+
+    - name: Executar Dialyzer
+      id: dialyzer_analysis 
+      run: |
+        export PATH="${REBAR3_INSTALL_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Executar Dialyzer': $PATH"
+        
+        echo "LIMPANDO TUDO E RECOMPILANDO ANTES DO DIALYZER"
+        # Embora o Xref já tenha compilado, uma limpeza e compilação aqui garante
+        # um estado isolado para o Dialyzer, caso necessário no futuro ou para depuração.
+        # Se a compilação for demorada e o Xref não modificar nada que afete o Dialyzer,
+        # esta compilação poderia ser otimizada, mas por segurança é mantida.
+        rebar3 clean --all 
+        rebar3 compile
 
         echo "Executando rebar3 dialyzer com DIAGNOSTIC=1..."
         DIAGNOSTIC=1 rebar3 dialyzer
@@ -211,11 +232,11 @@ jobs:
         echo "rebar3 dialyzer concluído com sucesso."
       shell: bash
 
-    - name: Upload rebar3 crashdump (se houver falha na Análise Estática)
-      if: steps.static_analysis.outcome == 'failure'
+    - name: Upload rebar3 crashdump (se houver falha no Dialyzer)
+      if: steps.dialyzer_analysis.outcome == 'failure' # Alterado para referenciar o passo do Dialyzer
       uses: actions/upload-artifact@v4
       with:
-        name: rebar3-crashdump-static-analysis-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}
+        name: rebar3-crashdump-dialyzer-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }} # Nome do artefato atualizado
         path: |
           rebar3.crashdump
           ./rebar3.crashdump
