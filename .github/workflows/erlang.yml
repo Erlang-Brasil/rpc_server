@@ -1,4 +1,4 @@
-name: Erlang CI com OpenSUSE
+name: Erlang CI com OpenSUSE Otimizado
 
 on:
   push:
@@ -21,90 +21,116 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Instalar dependências do sistema e Erlang
+      id: setup_erlang # Adicionado id para referenciar a output
       run: |
         zypper refresh
         zypper install -y erlang git wget
+        # Extrai e armazena a versão do Erlang/OTP para usar na chave de cache
+        # Remove aspas da string da versão do OTP (ex: "25" -> 25)
+        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
+        echo "Versão do Erlang/OTP instalada:"
         erl -version
       shell: bash
 
-    - name: Configurar cache para Rebar3 e _build
+    # O cache é configurado ANTES da instalação do Rebar3 para que possa restaurar o binário do Rebar3 se já estiver no cache.
+    # O passo de instalação do Rebar3 então verifica se ele foi restaurado ou precisa ser baixado.
+    - name: Configurar cache para Rebar3, dependências e _build
+      id: cache_rebar_build
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/rebar3
           _build
-        # A chave de cache deve incluir algo que mude quando as dependências mudarem, como rebar.lock
-        key: ${{ runner.os }}-opensuse-tumbleweed-rebar-${{ hashFiles('**/rebar.lock') }}
+        # Chave de cache mais específica incluindo a versão do Erlang/OTP
+        key: ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-${{ hashFiles('**/rebar.lock') }}
         # Chaves de restauração mais genéricas
         restore-keys: |
-          ${{ runner.os }}-opensuse-tumbleweed-rebar-
+          ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-
+          ${{ runner.os }}-opensuse-erlang-
+          ${{ runner.os }}-opensuse-
 
-    - name: Instalar Rebar3
+    - name: Instalar Rebar3 (se não estiver no cache) e adicionar ao PATH
       run: |
-        # Verifica se o rebar3 já está no cache e é executável
-        if [ -f "$HOME/.cache/rebar3/bin/rebar3" ]; then
-          echo "Rebar3 encontrado no cache."
-          REBAR3_BIN_DIR="$HOME/.cache/rebar3/bin"
+        REBAR3_VERSION="3.25.0" # Especifique a versão desejada do Rebar3
+        REBAR3_TARGET_DIR="$HOME/.cache/rebar3/bin" # Diretório onde 'rebar3 local install' coloca o executável
+        REBAR3_EXEC="$REBAR3_TARGET_DIR/rebar3"
+
+        # Garante que o diretório de destino exista
+        mkdir -p "$REBAR3_TARGET_DIR"
+
+        # Verifica se o rebar3 está presente (pode ter sido restaurado do cache via ~/.cache/rebar3)
+        if [ ! -f "$REBAR3_EXEC" ]; then
+          echo "Rebar3 não encontrado em $REBAR3_EXEC (provavelmente não estava no cache ou é a primeira execução), instalando..."
+          # Baixa uma cópia temporária do rebar3 para executar 'local install'
+          wget https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 -O ./rebar3_temp_download
+          chmod +x ./rebar3_temp_download
+          
+          # Instala o rebar3 no diretório $HOME/.cache/rebar3/bin/
+          # Este diretório é coberto pelo 'actions/cache' configurado acima
+          ./rebar3_temp_download local install
+          rm ./rebar3_temp_download
+          
+          if [ -f "$REBAR3_EXEC" ]; then
+            echo "Rebar3 $REBAR3_VERSION instalado com sucesso em $REBAR3_EXEC."
+          else
+            echo "ERRO: Falha ao instalar o Rebar3 em $REBAR3_EXEC após o download e 'local install'."
+            exit 1
+          fi
         else
-          echo "Rebar3 não encontrado no cache ou não instalado, instalando..."
-          wget https://github.com/erlang/rebar3/releases/download/3.25.0/rebar3
-          chmod +x rebar3
-          ./rebar3 local install # Instala em ~/.cache/rebar3/bin
-          REBAR3_BIN_DIR="$HOME/.cache/rebar3/bin"
+          echo "Rebar3 encontrado em $REBAR3_EXEC (provavelmente restaurado do cache)."
         fi
         
-        # Define REBAR3_BIN_DIR como uma variável de ambiente para os próximos passos
-        echo "REBAR3_BIN_DIR=${REBAR3_BIN_DIR}" >> $GITHUB_ENV
-
-        # Exporta o PATH para uso no rebar3 --version deste passo
-        export PATH="${REBAR3_BIN_DIR}:$PATH"
-
-        echo "Rebar3 bin directory: ${REBAR3_BIN_DIR}"
-        echo "PATH neste passo (Instalar Rebar3): $PATH"
+        # Adiciona o diretório do rebar3 ao GITHUB_PATH para que esteja disponível em todos os passos subsequentes
+        # GITHUB_PATH garante que o diretório seja pré-pendente ao PATH do sistema
+        echo "$REBAR3_TARGET_DIR" >> $GITHUB_PATH
+        
+        echo "Verificando a versão do rebar3 (deve estar no PATH agora):"
         rebar3 --version
       shell: bash
 
     - name: Compilar projeto (incluindo dependências se não cacheadas)
       run: |
-        # Adiciona o diretório do rebar3 ao PATH no início deste passo
-        # REBAR3_BIN_DIR está disponível como env var devido ao GITHUB_ENV no passo anterior
-        export PATH="${REBAR3_BIN_DIR}:$PATH"
-        echo "PATH atualizado no passo 'Compilar projeto': $PATH"
+        # Rebar3 deve estar no PATH devido ao GITHUB_PATH configurado no passo anterior
+        echo "PATH atual no passo 'Compilar projeto': $PATH" # Para depuração
+        echo "Verificando rebar3 antes de compilar:"
+        rebar3 --version
+        
+        echo "Limpando compilações anteriores..."
         rebar3 clean # Garante uma compilação limpa antes de prosseguir
+        
+        echo "Compilando o projeto..."
         rebar3 compile
       shell: bash
 
     - name: Executar análise estática (Xref e Dialyzer)
       run: |
-        # Adiciona o diretório do rebar3 ao PATH no início deste passo
-        export PATH="${REBAR3_BIN_DIR}:$PATH"
-        echo "PATH atualizado no passo 'Análise Estática': $PATH"
+        # Rebar3 deve estar no PATH
+        echo "Executando Xref..."
         rebar3 xref
-        # A construção do PLT do Dialyzer pode ser demorada na primeira vez.
-        # Considere adicionar o diretório do PLT ao cache também, se necessário.
-        # Exemplo: ~/.cache/rebar3/plt_{OTP_VERSION}_{APP_NAME}
-        # O Dialyzer se beneficiará do rebar3 clean no passo anterior, garantindo que analisa o código mais recente.
+        
+        echo "Executando Dialyzer (pode demorar na primeira vez ou após mudança na versão do Erlang/OTP)..."
+        # A construção/atualização do PLT do Dialyzer se beneficiará da chave de cache específica
+        # e do rebar3 clean no passo anterior, garantindo que analise o código mais recente.
         rebar3 dialyzer 
       shell: bash
 
     - name: Rodar testes
       id: run_tests
       run: |
-        # Adiciona o diretório do rebar3 ao PATH no início deste passo
-        export PATH="${REBAR3_BIN_DIR}:$PATH"
-        echo "PATH atualizado no passo 'Rodar testes': $PATH"
+        # Rebar3 deve estar no PATH
+        echo "Executando testes (EUnit e Common Test)..."
         DIAGNOSTIC=1 rebar3 do eunit, ct
       shell: bash
 
     - name: Upload rebar3 crashdump (se houver falha nos testes)
-      # Executa se o passo 'run_tests' falhar
+      # Executa somente se o passo 'run_tests' falhar
       if: steps.run_tests.outcome == 'failure'
       uses: actions/upload-artifact@v4
       with:
-        name: rebar3-crashdump-${{ runner.os }}
+        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}
         path: |
           rebar3.crashdump
           ./rebar3.crashdump
           _build/default/rebar3.crashdump
           _build/test/rebar3.crashdump
-        if-no-files-found: ignore
+        if-no-files-found: ignore # Não falhar se nenhum arquivo de crashdump for encontrado
