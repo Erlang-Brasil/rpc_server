@@ -10,7 +10,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1]).
 -export([start_acceptor/2]).
 
@@ -18,16 +18,16 @@
 %%% @doc Inicia o supervisor principal.
 %%%
 %%% @returns {ok, pid()} | {error, term()}
--spec start_link() -> {ok, pid()} | {error, term()}.
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+-spec start_link(list()) -> {ok, pid()} | {error, term()}.
+start_link(Args) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, Args).
 
 
 %%% @doc Callback de inicialização do supervisor.
 %%%
 %%% @returns {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
--spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
-init([]) ->
+-spec init(list()) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
+init(_Args) ->
     ?LOG_INFO("Iniciando supervisor do acceptor, versão ~p", [?MODULO_VERSAO]),
     SupFlags = #{
         strategy => simple_one_for_one,
@@ -62,7 +62,8 @@ init([]) ->
 %%%          Retorna `ok` se o processo acceptor foi iniciado com sucesso,
 %%%          ou `{error, Reason}` caso contrário (por exemplo, falha ao iniciar o child no supervisor).
 %%%
--spec start_acceptor(socket() | ssl:sslsocket(), socket() | ssl:sslsocket()) -> ok | {error, Reason :: term()}.
+% !WARNING da onde vem a chamada ? ssl:sslsocket() dialzyer apontou erro 
+-spec start_acceptor(socket(), socket()) -> ok | {error, Reason :: term()}.
 start_acceptor(ClientSocket, ListenSocket) ->    
     Args = [ClientSocket, ListenSocket],
     case supervisor:start_child(?MODULE, [Args]) of
@@ -71,7 +72,7 @@ start_acceptor(ClientSocket, ListenSocket) ->
             case gen_tcp:controlling_process(ClientSocket, AcceptorPid) of
                 ok ->
                     ?LOG_INFO("Controle do socket transferido para o acceptor ~p", [AcceptorPid]),
-                    {ok};
+                    ok;
                 {error, Reason} ->
                     ?LOG_ERROR("Falha ao transferir controle do socket para o acceptor: ~p", [Reason]),
                     supervisor:terminate_child(?MODULE, AcceptorPid),

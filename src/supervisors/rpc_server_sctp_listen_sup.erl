@@ -10,24 +10,24 @@
 
 -behaviour(supervisor).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1]).
 
 
 %%% @doc Inicia o supervisor principal.
 %%%
 %%% @returns {ok, pid()} | {error, term()}
--spec start_link() -> {ok, pid()} | {error, term()}.
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+-spec start_link(list()) -> {ok, pid()} | {error, term()}.
+start_link(Args) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, Args).
 
 
 
 %%% @doc Callback de inicialização do supervisor.
 %%%
 %%% @returns {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
--spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
-init([]) ->
+-spec init(list()) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
+init(_Args) ->
     ?LOG_INFO("Iniciando supervisor do listening, versão ~p", [?MODULO_VERSAO]),
     SupFlags = #{
         strategy => rest_for_one,
@@ -54,4 +54,4 @@ init([]) ->
         }
     ],
     
-    {ok, {SupFlags, ChildSpecs}}. 
+    {ok, {SupFlags, ChildSpecs}}.

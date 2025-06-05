@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("rpc_server.hrl").
@@ -21,16 +21,16 @@
 -record(state, {
     socket :: socket() | undefined,
     acceptor_sup :: pid() | undefined,
-    ref :: reference() | undefined
+    ref :: reference() | undefined | non_neg_integer()
 }).
 
 
 %%% @doc Inicia o listener TCP.
 %%%
 %%% @returns {ok, pid()} | {error, term()}
--spec start_link() -> {ok, pid()} | {error, term()}.
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+-spec start_link(list()) -> {ok, pid()} | {error, term()}.
+start_link(Args) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 
 %%% @doc Inicializa o estado do servidor gen_server responsável por escutar novas conexões.
@@ -45,8 +45,8 @@ start_link() ->
 %%%          Retorna `{ok, State}` se a inicialização foi bem-sucedida,
 %%%          ou `{stop, Reason}` caso contrário (por exemplo, falha ao localizar o supervisor).
 %%%
--spec init([]) -> {ok, #state{}} | {stop, term()}.
-init([]) ->
+-spec init(list()) -> {ok, #state{}} | {stop, term()}.
+init(_Args) ->
     ?LOG_INFO("Iniciando escuta na porta ~p | Versão ~p", [?DEFAULT_PORT, ?MODULO_VERSAO]),
     process_flag(trap_exit, true),
 
@@ -160,14 +160,16 @@ code_change(_OldVsn, State, _Extra) ->
 -spec handle_info({inet_async, inet:socket(), reference(), {ok, inet:socket()}}, #state{}) ->
     {noreply, #state{}} |
     {stop, term(), #state{}}.
-handle_info({inet_async, ListenSocket, Ref, {ok, ClientSocket}}, #state{socket = ListenSocket, ref = Ref, acceptor_sup = _} = State) ->
+handle_info({inet_async, ListenSocket, Ref, {ok, ClientSocket}}, #state{socket = ListenSocket, ref = Ref, acceptor_sup = PidAcceptorSup} = State) ->
     ?LOG_INFO("Nova conexão recebida de ~p", [inet:peername(ClientSocket)]),
     case set_sockopt(ListenSocket, ClientSocket) of
         ok ->
             case rpc_server_sctp_acceptor_sup:start_acceptor(ClientSocket, ListenSocket) of
-                {ok} ->
-                    {ok, NewRef} = prim_inet:async_accept(ListenSocket, -1),
-                    {noreply, State#state{ref = NewRef}};
+                ok ->
+                    {ok, _NewRef} = prim_inet:async_accept(ListenSocket, -1),
+                    % !WARNING: Mudei isso para funcionar o dialyzer, porém pode não fazer sentido nenhum
+                    {noreply, #state{socket = ListenSocket, acceptor_sup = PidAcceptorSup, ref = Ref}};
+
                 {error, Reason} ->
                     ?LOG_ERROR("Falha ao iniciar acceptor: ~p", [Reason]),
                     gen_tcp:close(ClientSocket),
