@@ -90,7 +90,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cache/rebar3
+        #  ~/.cache/rebar3
         # Chave de cache atualizada para incluir hash dos arquivos .erl e .hrl
         key: ${{ runner.os }}-opensuse-erlang-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-rebar-${{ hashFiles('**/rebar.lock') }}-${{ hashFiles('**/src/**/*.erl', '**/src/**/*.hrl', '**/include/**/*.hrl') }}
         restore-keys: |
