@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3, handle_hibernate/1]).
 
 -record(state, {
     socket :: socket() | undefined,
@@ -30,6 +30,10 @@ handle_call(stop, _From, State) ->
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
+
+handle_cast({hibernate}, State = #state{socket = _}) ->
+    ?LOG_INFO("[SHELL INSTANCE] - Conexão com o cliente interrompida, hibernando o shell..."),
+    proc_lib:hibernate(?MODULE, handle_hibernate, [State]);
 
 handle_cast({execute_command, Command}, State = #state{socket = Socket}) ->
     ?LOG_INFO("[SHELL INSTANCE] - Executando comando ~p", [Command]),
@@ -56,6 +60,10 @@ handle_cast(_Msg, State) ->
 
 handle_info(_Info, State) ->
     {noreply, State}.
+
+handle_hibernate(State) ->
+    {noreply, State, hibernate}.
+ 
 
 terminate(_Reason, _State) ->
     ok.

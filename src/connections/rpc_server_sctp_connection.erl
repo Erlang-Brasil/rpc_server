@@ -150,6 +150,7 @@ handle_info({tcp, Socket, Data}, #state{clientSocket = Socket} = State) ->
 %%%
 handle_info({tcp_closed, Socket}, #state{clientSocket = Socket} = State) ->
     ?LOG_INFO("Conexão fechada pelo cliente"),
+    gen_server:cast(State#state.shellInstancePid, {hibernate}), 
     {stop, normal, State};
 
 %%% @doc Manipula mensagens de erro em uma conexão TCP.
