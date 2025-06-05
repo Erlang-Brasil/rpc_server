@@ -33,39 +33,70 @@ jobs:
         path: |
           ~/.cache/rebar3
           _build
-        key: ${{ runner.os }}-opensuse-tumbleweed-${{ hashFiles('**/rebar.lock') }}
+        # A chave de cache deve incluir algo que mude quando as dependências mudarem, como rebar.lock
+        key: ${{ runner.os }}-opensuse-tumbleweed-rebar-${{ hashFiles('**/rebar.lock') }}
+        # Chaves de restauração mais genéricas
         restore-keys: |
-          ${{ runner.os }}-opensuse-tumbleweed-
+          ${{ runner.os }}-opensuse-tumbleweed-rebar-
 
     - name: Instalar Rebar3
       run: |
-        wget https://github.com/erlang/rebar3/releases/download/3.25.0/rebar3
-        chmod +x rebar3
-        ./rebar3 local install
-        echo "$HOME/.cache/rebar3/bin" >> $GITHUB_PATH
-        export PATH="$HOME/.cache/rebar3/bin:$PATH"
+        # Verifica se o rebar3 já está no cache e é executável
+        if [ -f "$HOME/.cache/rebar3/bin/rebar3" ]; then
+          echo "Rebar3 encontrado no cache."
+          REBAR3_BIN_DIR="$HOME/.cache/rebar3/bin"
+        else
+          echo "Rebar3 não encontrado no cache ou não instalado, instalando..."
+          wget https://github.com/erlang/rebar3/releases/download/3.25.0/rebar3
+          chmod +x rebar3
+          ./rebar3 local install # Instala em ~/.cache/rebar3/bin
+          REBAR3_BIN_DIR="$HOME/.cache/rebar3/bin"
+        fi
+        
+        # Define REBAR3_BIN_DIR como uma variável de ambiente para os próximos passos
+        echo "REBAR3_BIN_DIR=${REBAR3_BIN_DIR}" >> $GITHUB_ENV
+
+        # Exporta o PATH para uso no rebar3 --version deste passo
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
+
+        echo "Rebar3 bin directory: ${REBAR3_BIN_DIR}"
+        echo "PATH neste passo (Instalar Rebar3): $PATH"
         rebar3 --version
       shell: bash
 
     - name: Compilar projeto (incluindo dependências se não cacheadas)
       run: |
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        # REBAR3_BIN_DIR está disponível como env var devido ao GITHUB_ENV no passo anterior
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Compilar projeto': $PATH"
         rebar3 compile
       shell: bash
 
     - name: Executar análise estática (Xref e Dialyzer)
       run: |
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Análise Estática': $PATH"
         rebar3 xref
-        rebar3 dialyzer
+        # A construção do PLT do Dialyzer pode ser demorada na primeira vez.
+        # Considere adicionar o diretório do PLT ao cache também, se necessário.
+        # Exemplo: ~/.cache/rebar3/plt_{OTP_VERSION}_{APP_NAME}
+        rebar3 dialyzer 
       shell: bash
 
     - name: Rodar testes
       id: run_tests
       run: |
+        # Adiciona o diretório do rebar3 ao PATH no início deste passo
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        echo "PATH atualizado no passo 'Rodar testes': $PATH"
         DIAGNOSTIC=1 rebar3 do eunit, ct
       shell: bash
 
     - name: Upload rebar3 crashdump (se houver falha nos testes)
-      if: failure() && steps.run_tests.outcome == 'failure'
+      # Executa se o passo 'run_tests' falhar
+      if: steps.run_tests.outcome == 'failure'
       uses: actions/upload-artifact@v4
       with:
         name: rebar3-crashdump-${{ runner.os }}
