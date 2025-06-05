@@ -20,7 +20,24 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
 
-    # NOVO PASSO: Verificar o código imediatamente após o checkout
+    # PASSO DE INSTALAÇÃO MOVIDO PARA ANTES DO DEBUG DO CHECKOUT
+    - name: Instalar dependências do sistema e Erlang
+      id: setup_erlang
+      run: |
+        zypper refresh
+        zypper install -y erlang git wget bash which # git é instalado aqui
+        echo "Verificando presença do bash:"
+        which bash
+        ls -l /bin/bash
+        echo "Verificando presença do git:"
+        which git
+        git --version
+        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
+        echo "Versão do Erlang/OTP instalada:"
+        erl -version
+      shell: bash
+
+    # AGORA O DEBUG DO CHECKOUT PODE USAR O GIT
     - name: Debug Verificar Checkout Inicial
       run: |
         echo "Commit atual:"
@@ -32,19 +49,6 @@ jobs:
         else
           echo "Arquivo fonte $SOURCE_FILE_TO_CHECK não encontrado no checkout inicial."
         fi
-      shell: bash
-
-    - name: Instalar dependências do sistema e Erlang
-      id: setup_erlang
-      run: |
-        zypper refresh
-        zypper install -y erlang git wget bash which
-        echo "Verificando presença do bash:"
-        which bash
-        ls -l /bin/bash
-        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
-        echo "Versão do Erlang/OTP instalada:"
-        erl -version
       shell: bash
 
     - name: Configurar cache para Rebar3, dependências e _build
