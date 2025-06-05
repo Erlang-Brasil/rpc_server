@@ -70,6 +70,7 @@ jobs:
         # REBAR3_BIN_DIR está disponível como env var devido ao GITHUB_ENV no passo anterior
         export PATH="${REBAR3_BIN_DIR}:$PATH"
         echo "PATH atualizado no passo 'Compilar projeto': $PATH"
+        rebar3 clean # Garante uma compilação limpa antes de prosseguir
         rebar3 compile
       shell: bash
 
@@ -82,6 +83,7 @@ jobs:
         # A construção do PLT do Dialyzer pode ser demorada na primeira vez.
         # Considere adicionar o diretório do PLT ao cache também, se necessário.
         # Exemplo: ~/.cache/rebar3/plt_{OTP_VERSION}_{APP_NAME}
+        # O Dialyzer se beneficiará do rebar3 clean no passo anterior, garantindo que analisa o código mais recente.
         rebar3 dialyzer 
       shell: bash
 

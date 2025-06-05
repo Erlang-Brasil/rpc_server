@@ -36,7 +36,7 @@
 %%%          Retorna `{ok, Pid}` se o servidor foi iniciado com sucesso,
 %%%          ou `{error, Reason}` caso contrário.
 %%%
--spec start_link([]) -> {ok, pid()} | {error, term()}.
+-spec start_link(list()) -> {ok, pid()} | {error, term()}.
 start_link([ClientSocket, ListenSocket]) ->
     gen_server:start_link(?MODULE, [ClientSocket, ListenSocket], []).
 
