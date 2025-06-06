@@ -1,5 +1,5 @@
 # Nome do Workflow
-name: Erlang CI com OpenSUSE
+name: Erlang CI Dinâmico com OpenSUSE Otimizado
 
 # Gatilhos para execução
 on:
@@ -8,89 +8,126 @@ on:
   pull_request:
     branches: [ "main" ]
 
-# Permissões mínimas para o job
+# Permissões mínimas para o job (contents:read é suficiente para checkout, cache e upload de artefatos)
+# Veja a Seção III.E do relatório para detalhes.
 permissions:
   contents: read
 
 jobs:
   build:
-    # Nome do job
-    name: Build e Teste no OpenSUSE
+    # Nome do job, incluindo a versão do OTP da matriz
+    name: OTP ${{ matrix.otp-version }} / Rebar3 ${{ matrix.rebar3-version }} on OpenSUSE
     
     # Executa os passos dentro do container especificado
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # O runner do GitHub Actions; os passos rodam no contêiner abaixo
     container:
+      # Recomenda-se usar um snapshot específico do Tumbleweed para reprodutibilidade, se disponível.
+      # Ex: opensuse/tumbleweed:YYYYMMDD. Veja a Seção III.A do relatório.
+      # Mantendo :latest conforme o original, mas com ressalvas sobre reprodutibilidade.
       image: opensuse/tumbleweed:latest
 
+    # Define a matriz de combinações para testar
+    strategy:
+      fail-fast: false # Permite que todos os jobs da matriz terminem, mesmo que um falhe
+      matrix:
+        # Versões do Erlang/OTP, incluindo a nova versão 28.0
+        # OTP 28.0 é recente; setup-beam pode precisar compilá-lo. Veja Seção III.B.
+        otp-version: ['25.3.2', '26.2.5', '27.0', '28.0']
+        # Versão do Rebar3
+        rebar3-version: ['3.22.1'] # Considerar usar 'latest' se apropriado e testado
+    
     steps:
     # 1. Checkout do código-fonte
     - name: 1. Checkout do código
+      # Fixar a versão da action. Veja Seção III.E.
       uses: actions/checkout@v4
 
-    # 2. Instalar Erlang via Zypper e Rebar3 manualmente
-    - name: 2. Instalar Erlang e Rebar3
-      id: setup
-      shell: bash
+    # 2. Instalar dependências essenciais no container
+    - name: 2. Instalar dependências do sistema (no OpenSUSE)
+      # Removido 'sudo' pois os comandos no contêiner rodam como root.
+      # Adicionadas ferramentas de compilação e zstd. Veja Seção III.A.
       run: |
-        echo "Atualizando repositórios do OpenSUSE..."
         zypper --non-interactive refresh
-        
-        echo "Instalando Erlang, Git e outras dependências..."
-        zypper --non-interactive install -y erlang git curl which coreutils
-        
-        # Captura a versão do Erlang instalada para usar na chave do cache
-        ERLANG_OTP_RELEASE=$(erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().')
-        echo "ERLANG_OTP_RELEASE=${ERLANG_OTP_RELEASE}" >> $GITHUB_OUTPUT
-        
-        # Instala uma versão específica do Rebar3 manualmente
-        REBAR3_VERSION="3.22.1"
-        echo "Instalando Rebar3 versão ${REBAR3_VERSION}..."
-        REBAR3_BIN_DIR="$HOME/.local/bin"
-        mkdir -p "$REBAR3_BIN_DIR"
-        curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
-        chmod +x "${REBAR3_BIN_DIR}/rebar3"
-        echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
-        
-        echo "--- Verificação das Instalações ---"
-        echo -n "Versão do Erlang/OTP: "
-        erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
-        echo -n "Versão do Rebar3: "
-        rebar3 --version
-        echo "-----------------------------------"
+        zypper --non-interactive install -y curl git tar gzip which gcc-c++ make autoconf ncurses-devel openssl-devel zstd
+    
+    # 3. Instalação dinâmica de Erlang e Rebar3
+    - name: 3. Setup Erlang/OTP e Rebar3
+      id: setup-beam # ID para usar seus outputs
+      # Fixar a versão da action. Veja Seção III.B.
+      uses: erlef/setup-beam@v1
+      with:
+        otp-version: ${{ matrix.otp-version }}
+        rebar3-version: ${{ matrix.rebar3-version }}
 
-    # 3. Configuração do Cache para dependências e build
-    - name: 3. Restaurar cache do Rebar3
-      uses: actions/cache@v4
+    # 4. Configuração do Cache para dependências e build
+    - name: 4. Restaurar/Salvar cache do Rebar3 e _build
+      # Fixar a versão da action. Veja Seção III.C.
+      uses: actions/cache@v4 # ou @v4.0.3 para maior especificidade
       with:
         path: |
           ~/.cache/rebar3
           _build
-        # A chave de cache agora usa a versão do OTP detectada no passo anterior
-        key: ci-cache-opensuse-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}-${{ hashFiles('**/rebar.lock') }}
+        # Chave de cache aprimorada para incluir rebar.config e arquivos fonte.
+        # Veja Seções III.C e III.D do relatório.
+        key: ci-cache-opensuse-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config', '**/src/**', '**/apps/**/src/**') }}
         restore-keys: |
-          ci-cache-opensuse-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}-
+          ci-cache-opensuse-${{ steps.setup-beam.outputs.otp-version }}-
 
-    # 4. Compilar o projeto
-    - name: 4. Compilar dependências e projeto
+    # 5. Compilar o projeto
+    - name: 5. Compilar dependências e projeto
       run: rebar3 compile
 
-    # 5. Análise estática com Xref
-    - name: 5. Rodar análise de Xref
+    # 6. Análise estática com Xref
+    - name: 6. Rodar análise de Xref
       run: rebar3 xref
 
-    # 6. Análise de tipos com Dialyzer
-    - name: 6. Rodar análise do Dialyzer
+    # 7. Análise de tipos com Dialyzer
+    # O cache do PLT é tratado pela chave de cache geral (passo 4),
+    # pois os diretórios padrão do PLT estão incluídos nos caminhos cacheados.
+    - name: 7. Rodar análise do Dialyzer
       run: rebar3 dialyzer
 
-    # 7. Executar os testes (EUnit e Common Test)
-    - name: 7. Rodar testes
+    # 8. Executar os testes (EUnit e Common Test)
+    - name: 8. Rodar testes
       run: rebar3 do eunit, ct
+      # Para cobertura de código, modifique para: rebar3 do eunit, ct -c
+      # Ou adicione um passo 'rebar3 cover' após este, se {cover_enabled, true} estiver no rebar.config.
+      # Veja Seção III.F.
 
-    # 8. Fazer upload do crashdump em caso de falha
-    - name: 8. Upload do Crashdump (em caso de falha)
+    # (Opcional) Passo para Linting - Veja Seção III.F.1
+    # - name: 9.A. Lint com rebar3_lint
+    #   run: rebar3 lint
+
+    # (Opcional) Passo para Testes Baseados em Propriedades - Veja Seção III.F.2
+    # - name: 9.B. Testes com rebar3_proper
+    #   run: rebar3 proper
+      
+    # (Opcional) Passo para Upload de Cobertura para Codecov - Veja Seção III.F.3
+    # Requer configuração do plugin rebar3_codecov e secrets.CODECOV_TOKEN
+    # - name: 9.C. Upload da cobertura para Codecov
+    #   if: success() # Ou always() dependendo da estratégia
+    #   uses: codecov/codecov-action@v4 # Ou @v5.x.y
+    #   with:
+    #     token: ${{ secrets.CODECOV_TOKEN }}
+    #     # files:./_build/test/cover/codecov.json # Ajustar caminho se necessário
+    #     # flags: otp-${{ matrix.otp-version }}
+
+    # (Opcional) Passo para Upload de Cobertura para Coveralls - Veja Seção III.F.3
+    # Requer configuração do plugin rebar3_coveralls ou geração de LCOV e secrets.GITHUB_TOKEN
+    # - name: 9.D. Upload da cobertura para Coveralls
+    #   if: success() # Ou always()
+    #   uses: coverallsapp/github-action@vX.Y.Z # Usar tag específica
+    #   with:
+    #     github-token: ${{ secrets.GITHUB_TOKEN }}
+    #     path-to-lcov:./_build/test/coveralls/lcov.info # Ajustar caminho para o arquivo LCOV
+
+    # 9. Fazer upload do crashdump em caso de falha
+    - name: 10. Upload do Crashdump (em caso de falha)
       if: failure()
-      uses: actions/upload-artifact@v4
+      # Fixar a versão da action. Veja Seção III.E.
+      uses: actions/upload-artifact@v4 # Ou @v4.6.2 para maior especificidade
       with:
-        name: rebar3-crashdump-opensuse-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}
+        # O nome do artefato agora inclui a versão do OTP para fácil identificação
+        name: rebar3-crashdump-opensuse-${{ steps.setup-beam.outputs.otp-version }}
         path: rebar3.crashdump
-        if-no-files-found: warn
+        if-no-files-found: warn # Comportamento padrão e recomendado
