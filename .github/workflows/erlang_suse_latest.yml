@@ -26,7 +26,7 @@ jobs:
       run: |
         echo "Instalando dependências do sistema..."
         zypper --non-interactive refresh
-        zypper --non-interactive install -y erlang git bash which curl coreutils
+        zypper --non-interactive install -y erlang git curl which coreutils
 
         echo "Configurando PATH do Erlang..."
         ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format("~s/bin", [code:root_dir()]), halt().')"
@@ -46,11 +46,11 @@ jobs:
         echo "--- Verificação ---"
         echo "PATH: $PATH"
         echo -n "Versão do Erlang: "; erl -version
-        echo -n "Versão do Rebar3: "; "${REBAR3_BIN_DIR}/rebar3" --version
+        echo -n "Versão do Rebar3: "; rebar3 --version
         echo "-------------------"
 
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
-      shell: bash
+      shell: sh
 
     - name: 3. Configurar Cache
       id: cache
@@ -65,19 +65,19 @@ jobs:
 
     - name: 4. Compilar Projeto
       run: rebar3 compile
-      shell: bash
+      shell: sh
 
     - name: 5. Rodar Análise Estática (Xref)
       run: rebar3 xref
-      shell: bash
+      shell: sh
 
     - name: 6. Rodar Análise de Tipos (Dialyzer)
       run: rebar3 dialyzer
-      shell: bash
+      shell: sh
 
     - name: 7. Rodar Testes
       run: rebar3 do eunit, ct
-      shell: bash
+      shell: sh
 
     - name: 8. Upload de Crashdump (em caso de falha)
       if: failure()
