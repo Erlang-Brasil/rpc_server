@@ -21,19 +21,26 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: 2. Instalar dependências (Erlang, Bash e Curl)
+    - name: 2. Instalar dependências e EXPORTAR CAMINHO DO ERLANG
       id: setup_erlang
       run: |
         zypper --non-interactive refresh
         zypper --non-interactive install -y erlang git bash which curl
+        
+        # --- A CORREÇÃO CRÍTICA ---
+        # Descobre o diretório raiz do Erlang e adiciona seu subdiretório 'bin' ao GITHUB_PATH
+        # Isso garante que 'erl', 'erlc', e 'escript' sejam encontrados nos passos seguintes.
+        ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format("~s/bin~n", [code:root_dir()]), halt().')"
+        echo "Adicionando diretório de binários do Erlang ao PATH: ${ERLANG_BIN_DIR}"
+        echo "${ERLANG_BIN_DIR}" >> $GITHUB_PATH
+        
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
         echo "Versão do Erlang/OTP instalada: $(erl -version)"
       shell: sh
 
-    - name: 3. Instalar Rebar3 (Versão Correta 3.25.0)
+    - name: 3. Instalar Rebar3
       id: install_rebar3
       run: |
-        # Usando a versão estável mais recente confirmada: 3.25.0
         REBAR3_VERSION="3.25.0"
         echo "Instalando Rebar3 v${REBAR3_VERSION}..."
 
@@ -42,18 +49,20 @@ jobs:
 
         echo "Baixando rebar3..."
         curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
-        
         chmod +x "${REBAR3_BIN_DIR}/rebar3"
 
+        echo "Adicionando diretório de binários do Rebar3 ao PATH: ${REBAR3_BIN_DIR}"
         echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
-        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        
+        # Exportar o PATH para a sessão atual não é mais estritamente necessário
+        # se os comandos neste passo não dependessem do GITHUB_PATH, mas mantemos por consistência.
+        export PATH="${ERLANG_BIN_DIR}:${REBAR3_BIN_DIR}:$PATH"
 
         echo "Rebar3 instalado com sucesso em: $(which rebar3)"
         rebar3 --version
-      # Usando a sintaxe correta para um shell customizado
       shell: /usr/bin/bash {0}
 
-    - name: 4. Configurar Cache (Passo Crítico para Estabilidade)
+    - name: 4. Configurar Cache
       id: cache
       uses: actions/cache@v4
       with:
@@ -67,6 +76,9 @@ jobs:
     - name: 5. Compilar Projeto
       id: compile
       run: |
+        echo "Verificando PATH no passo de compilação: $PATH"
+        which escript
+        which rebar3
         rebar3 compile
       shell: /usr/bin/bash {0}
 
