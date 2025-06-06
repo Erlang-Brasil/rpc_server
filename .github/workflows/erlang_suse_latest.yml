@@ -9,6 +9,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     strategy:
+      # Adicione a linha abaixo para evitar que a CI pare se uma versão falhar
+      fail-fast: false
       matrix:
         otp: ['28.0', '27.0', '26.2.2']
     env:
