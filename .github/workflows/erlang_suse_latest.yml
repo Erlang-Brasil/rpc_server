@@ -23,13 +23,14 @@ jobs:
 
     - name: 2. Instalar Erlang e Rebar3 (Setup Unificado)
       id: setup
+      shell: bash
       run: |
-        echo "Instalando dependências do sistema..."
+        echo "Instalando bash e dependências do sistema..."
         zypper --non-interactive refresh
-        zypper --non-interactive install -y erlang git curl which coreutils
+        zypper --non-interactive install -y bash erlang git curl which coreutils
 
         echo "Configurando PATH do Erlang..."
-        ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format("~s/bin", [code:root_dir()]), halt().')"
+        ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format(\"~s/bin\", [code:root_dir()]), halt().')"
 
         echo "Instalando Rebar3..."
         REBAR3_VERSION="3.25.0"
@@ -49,8 +50,7 @@ jobs:
         echo -n "Versão do Rebar3: "; rebar3 --version
         echo "-------------------"
 
-        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
-      
+        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '\"')" >> $GITHUB_OUTPUT
 
     - name: 3. Configurar Cache
       id: cache
