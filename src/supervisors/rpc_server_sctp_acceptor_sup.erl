@@ -27,6 +27,8 @@ start_link() ->
 -spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
     ?LOG_INFO("Iniciando supervisor do acceptor, versão ~p", [?MODULO_VERSAO]),
+    ?LOG_INFO("Iniciando ETS..."),
+    ets:new(connection_table, [named_table, public, {write_concurrency, true}]),
     SupFlags = #{
         strategy => simple_one_for_one,
         intensity => 10,
