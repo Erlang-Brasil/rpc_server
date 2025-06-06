@@ -1,135 +1,151 @@
-# Nome do Workflow
-name: Erlang CI Dinâmico com OpenSUSE Otimizado
+name: Erlang CI on Ubuntu
 
-# Gatilhos para execução
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push, pull_request]
 
-# Permissões mínimas para o job (contents:read é suficiente para checkout, cache e upload de artefatos)
-# Veja a Seção III.E do relatório para detalhes.
 permissions:
-  contents: read
+  contents: read # Necessário para actions/checkout
+  # checks: write # Pode ser necessário para actions de cobertura que atualizam status de PR
+  # pull-requests: write # Pode ser necessário para actions de cobertura que comentam em PRs
 
 jobs:
   build:
-    # Nome do job, incluindo a versão do OTP da matriz
-    name: OTP ${{ matrix.otp-version }} / Rebar3 ${{ matrix.rebar3-version }} on OpenSUSE
-    
-    # Executa os passos dentro do container especificado
-    runs-on: ubuntu-latest # O runner do GitHub Actions; os passos rodam no contêiner abaixo
-    container:
-      # Recomenda-se usar um snapshot específico do Tumbleweed para reprodutibilidade, se disponível.
-      # Ex: opensuse/tumbleweed:YYYYMMDD. Veja a Seção III.A do relatório.
-      # Mantendo :latest conforme o original, mas com ressalvas sobre reprodutibilidade.
-      image: opensuse/tumbleweed:latest
-    env:
-      ImageOS: ubunto22
-
-    # Define a matriz de combinações para testar
+    runs-on: ubuntu-24.04 # Ou ubuntu-22.04 para LTS anterior
     strategy:
-      fail-fast: false # Permite que todos os jobs da matriz terminem, mesmo que um falhe
       matrix:
-        # Versões do Erlang/OTP, incluindo a nova versão 28.0
-        # OTP 28.0 é recente; setup-beam pode precisar compilá-lo. Veja Seção III.B.
-        otp-version: ['25.3.2', '26.2.5', '27.0', '28.0']
-        # Versão do Rebar3
-        rebar3-version: ['3.22.1'] # Considerar usar 'latest' se apropriado e testado
-    
+        otp: ['28.0','27.0', '26.2.2'] # Exemplo de matriz para testar em múltiplas versões OTP
+        # Adicione outras variáveis de matriz se necessário (ex: rebar3_version)
+    env:
+      REBAR3_VERSION: '3.22.1' # Especifique a versão do Rebar3
+
     steps:
-    # 1. Checkout do código-fonte
-    - name: 1. Checkout do código
-      # Fixar a versão da action. Veja Seção III.E.
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # 2. Instalar dependências essenciais no container
-    - name: 2. Instalar dependências do sistema (no OpenSUSE)
-      # Removido 'sudo' pois os comandos no contêiner rodam como root.
-      # Adicionadas ferramentas de compilação e zstd. Veja Seção III.A.
-      run: |
-        zypper --non-interactive refresh
-        zypper --non-interactive install -y curl git tar gzip which gcc-c++ make autoconf ncurses-devel openssl-devel zstd
-    
-    # 3. Instalação dinâmica de Erlang e Rebar3
-    - name: 3. Setup Erlang/OTP e Rebar3
-      id: setup-beam # ID para usar seus outputs
-      # Fixar a versão da action. Veja Seção III.B.
-      uses: erlef/setup-beam@v1
-      with:
-        otp-version: ${{ matrix.otp-version }}
-        rebar3-version: ${{ matrix.rebar3-version }}
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1 # Usa a tag móvel v1.x.y recomendada
+        id: setup-beam
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: ${{ env.REBAR3_VERSION }}
+          # version-type: strict # Descomente para correspondência exata de versão
 
-    # 4. Configuração do Cache para dependências e build
-    - name: 4. Restaurar/Salvar cache do Rebar3 e _build
-      # Fixar a versão da action. Veja Seção III.C.
-      uses: actions/cache@v4 # ou @v4.0.3 para maior especificidade
-      with:
-        path: |
-          ~/.cache/rebar3
-          _build
-        # Chave de cache aprimorada para incluir rebar.config e arquivos fonte.
-        # Veja Seções III.C e III.D do relatório.
-        key: ci-cache-opensuse-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config', '**/src/**', '**/apps/**/src/**') }}
-        restore-keys: |
-          ci-cache-opensuse-${{ steps.setup-beam.outputs.otp-version }}-
+      - name: Restore Hex package cache
+        uses: actions/cache@v4
+        id: hex-cache
+        with:
+          path: |
+            ~/.cache/rebar3/hex
+            ~/.hex
+          key: ${{ runner.os }}-hex-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-hex-${{ steps.setup-beam.outputs.otp-version }}-
 
-    # 5. Compilar o projeto
-    - name: 5. Compilar dependências e projeto
-      run: rebar3 compile
+      - name: Restore Dialyzer PLT cache
+        uses: actions/cache@v4
+        id: plt-cache
+        with:
+          path: |
+            ~/.cache/rebar3/plt_*.ets # Cache global de PLTs base
+            _build/default/rebar3_*.plt # Cache local de PLTs do projeto (ajuste o caminho se plt_location/plt_prefix for diferente)
+          key: ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config') }}
+          restore-keys: |
+            ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-
 
-    # 6. Análise estática com Xref
-    - name: 6. Rodar análise de Xref
-      run: rebar3 xref
+      # Opcional: Cache para o diretório _build (pode ser grande e volátil)
+      # - name: Restore _build cache
+      #   uses: actions/cache@v4
+      #   id: build-cache
+      #   with:
+      #     path: _build
+      #     key: ${{ runner.os }}-build-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config', 'apps/**/src/**/*.erl', 'src/**/*.erl') }}
+      #   restore-keys: |
+      #     ${{ runner.os }}-build-${{ steps.setup-beam.outputs.otp-version }}-
 
-    # 7. Análise de tipos com Dialyzer
-    # O cache do PLT é tratado pela chave de cache geral (passo 4),
-    # pois os diretórios padrão do PLT estão incluídos nos caminhos cacheados.
-    - name: 7. Rodar análise do Dialyzer
-      run: rebar3 dialyzer
+      - name: Install Dependencies
+        # if: steps.hex-cache.outputs.cache-hit!= 'true' # Opcional: pular se o cache de dependências for restaurado
+        run: rebar3 deps
 
-    # 8. Executar os testes (EUnit e Common Test)
-    - name: 8. Rodar testes
-      run: rebar3 do eunit, ct
-      # Para cobertura de código, modifique para: rebar3 do eunit, ct -c
-      # Ou adicione um passo 'rebar3 cover' após este, se {cover_enabled, true} estiver no rebar.config.
-      # Veja Seção III.F.
+      - name: Compile
+        run: rebar3 compile
 
-    # (Opcional) Passo para Linting - Veja Seção III.F.1
-    # - name: 9.A. Lint com rebar3_lint
-    #   run: rebar3 lint
+      - name: Run Dialyzer
+        # Considerar executar sempre ou condicionar ao cache-hit da PLT.
+        # A construção da PLT pode ser parte desta etapa se não estiver totalmente em cache.
+        run: rebar3 dialyzer
 
-    # (Opcional) Passo para Testes Baseados em Propriedades - Veja Seção III.F.2
-    # - name: 9.B. Testes com rebar3_proper
-    #   run: rebar3 proper
-      
-    # (Opcional) Passo para Upload de Cobertura para Codecov - Veja Seção III.F.3
-    # Requer configuração do plugin rebar3_codecov e secrets.CODECOV_TOKEN
-    # - name: 9.C. Upload da cobertura para Codecov
-    #   if: success() # Ou always() dependendo da estratégia
-    #   uses: codecov/codecov-action@v4 # Ou @v5.x.y
-    #   with:
-    #     token: ${{ secrets.CODECOV_TOKEN }}
-    #     # files:./_build/test/cover/codecov.json # Ajustar caminho se necessário
-    #     # flags: otp-${{ matrix.otp-version }}
+     # - name: Run Linter (rebar3_lint with Elvis)
+        # Adicione rebar3_lint aos plugins no rebar.config
+        # run: rebar3 lint # Descomente se rebar3_lint estiver configurado
 
-    # (Opcional) Passo para Upload de Cobertura para Coveralls - Veja Seção III.F.3
-    # Requer configuração do plugin rebar3_coveralls ou geração de LCOV e secrets.GITHUB_TOKEN
-    # - name: 9.D. Upload da cobertura para Coveralls
-    #   if: success() # Ou always()
-    #   uses: coverallsapp/github-action@vX.Y.Z # Usar tag específica
-    #   with:
-    #     github-token: ${{ secrets.GITHUB_TOKEN }}
-    #     path-to-lcov:./_build/test/coveralls/lcov.info # Ajustar caminho para o arquivo LCOV
+      - name: Run EUnit tests with coverage
+        run: rebar3 eunit --cover
 
-    # 9. Fazer upload do crashdump em caso de falha
-    - name: 10. Upload do Crashdump (em caso de falha)
-      if: failure()
-      # Fixar a versão da action. Veja Seção III.E.
-      uses: actions/upload-artifact@v4 # Ou @v4.6.2 para maior especificidade
-      with:
-        # O nome do artefato agora inclui a versão do OTP para fácil identificação
-        name: rebar3-crashdump-opensuse-${{ steps.setup-beam.outputs.otp-version }}
-        path: rebar3.crashdump
-        if-no-files-found: warn # Comportamento padrão e recomendado
+      - name: Run Common Test suites with coverage
+        run: rebar3 ct --cover
+
+      # Opção 1: Upload para Codecov usando rebar3_codecov plugin
+      # Adicione rebar3_codecov aos plugins e provider_hooks no rebar.config
+      # {plugins, [{rebar3_codecov, "0.4.0"}]}.
+      # {provider_hooks, [{post, [{eunit, {codecov, analyze}}]}, {post, [{ct, {codecov, analyze}}]}]}.
+      # {cover_enabled, true}.
+      # - name: Analyze coverage for Codecov (using rebar3_codecov)
+      #   run: rebar3 codecov analyze # Gera o JSON
+      # - name: Upload coverage to Codecov (using rebar3_codecov)
+      #   if: success() && matrix.otp == '27.0' # Exemplo: enviar apenas para uma versão OTP
+      #   run: rebar3 codecov upload
+      #   env:
+      #     CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # Opção 2: Upload para Codecov usando codecov/codecov-action
+      # Requer que um relatório em formato compatível (ex: LCOV, ou JSON do rebar3_codecov analyze) seja gerado.
+      # Se rebar3_codecov analyze foi executado, o arquivo JSON estará em _build/test/codecov.json
+      - name: Generate Codecov JSON report (using rebar3_codecov)
+        if: always() # Executar mesmo se os testes falharem para ter o relatório
+        run: |
+          rebar3 as test codecov analyze |
+          | echo "Codecov analysis failed but continuing to allow report upload"
+        # Adicione rebar3_codecov aos plugins e provider_hooks no rebar.config
+        # {plugins, [{rebar3_codecov, "0.4.0"}]}.
+        # {provider_hooks, [{post, [{eunit, {codecov, analyze}}]}, {post, [{ct, {codecov, analyze}}]}]}.
+        # {cover_enabled, true}.
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4 # Ou @v5 se for a recomendação mais atual
+        if: success() && matrix.otp == '27.0' # Exemplo: enviar apenas para uma versão OTP
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: _build/test/codecov.json # Caminho para o relatório JSON gerado por rebar3_codecov analyze
+          # ou use 'directory:./coverage' se gerar relatórios LCOV em um diretório específico
+          fail_ci_if_error: true # Opcional: falhar o CI se o upload falhar
+          verbose: true # Opcional
+
+      # Opção 3: Upload para Coveralls (requer geração de LCOV)
+      # - name: Generate LCOV report (exemplo, pode precisar de ferramenta externa)
+      #   run: |
+      #     # Comando para converter.coverdata para LCOV.
+      #     # Exemplo: rebar3 covertool generate --lcov > coverage.lcov
+      #     # Atualmente, rebar3 não tem um comando direto para LCOV.
+      #     # Pode ser necessário um plugin como https://github.com/comtihon/rebar3_lcov
+      #     # ou usar gcovr se os dados forem compatíveis.
+      #     echo "Geração de LCOV não implementada nativamente por rebar3. Usar plugin ou ferramenta externa."
+      #     # touch coverage.lcov # Placeholder
+      #
+      # - name: Upload coverage to Coveralls
+      #   uses: coverallsapp/github-action@master
+      #   if: success() && matrix.otp == '27.0' # Exemplo: enviar apenas para uma versão OTP
+      #   with:
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      #     path-to-lcov: coverage.lcov # Caminho para o arquivo LCOV
+      #     flag-name: OTP-${{ matrix.otp }} # Para diferenciar jobs de matriz no Coveralls
+      #     parallel: ${{ strategy.matrix.otp!= '' }} # Marcar como paralelo se estiver em uma matriz
+
+      - name: Upload test logs and HTML coverage report
+        if: always() # Sempre fazer upload, mesmo se as etapas anteriores falharem
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-otp-${{ matrix.otp }}
+          path: |
+            _build/test/logs/ # Logs do Common Test
+            _build/test/cover/ # Relatório HTML de cobertura do Rebar3
+          if-no-files-found: warn # Avisar se não houver arquivos, mas não falhar
+          retention-days: 7 # Manter artefatos por 7 dias
