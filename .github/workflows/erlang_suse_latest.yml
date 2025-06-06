@@ -50,6 +50,7 @@ jobs:
         echo -n "Versão do Rebar3: "; rebar3 --version
         echo "-------------------"
 
+        # Extraindo versão do Erlang/OTP e enviando para outputs
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '\"')" >> $GITHUB_OUTPUT
 
     - name: 3. Configurar Cache
