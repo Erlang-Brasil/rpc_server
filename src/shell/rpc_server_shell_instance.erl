@@ -35,7 +35,7 @@ handle_cast({hibernate}, State = #state{socket = _}) ->
     ?LOG_INFO("[SHELL INSTANCE] - Conexão com o cliente interrompida, hibernando o shell..."),
     proc_lib:hibernate(?MODULE, handle_hibernate, [State]);
 
-handle_cast({execute_command, Command}, State = #state{socket = Socket}) ->
+handle_cast({execute_command, Command}, State = #state{socket = _}) ->
     ?LOG_INFO("[SHELL INSTANCE] - Executando comando ~p", [Command]),
      
     CommandStr = re:replace(binary_to_list(Command), "[\r\n]+$", "", [{return, list}]),
@@ -49,9 +49,7 @@ handle_cast({execute_command, Command}, State = #state{socket = Socket}) ->
     {ExitCode, Output} = get_data(Port, []),
     ?LOG_INFO("[SHELL INSTANCE] - Resultado shell ~p", [{ExitCode, Output}]),
     
-    %% TODO: REFATORAR PARA O CONNECTION PODER RECEBER O RESULTADO DO COMANDO
-    Response = io_lib:format("~s~n", [Output]),
-    gen_tcp:send(Socket, list_to_binary(Response)),    
+    gen_server:cast(State#state.connection, {command_response, io_lib:format("~s~n", [Output])}),
     
     {noreply, State};
 

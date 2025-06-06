@@ -109,6 +109,35 @@ handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 
+
+%% @doc
+%% Manipula mensagens assíncronas enviadas ao servidor gen_server.
+%%
+%% Esta função é chamada automaticamente quando um cliente ou outro processo envia uma mensagem usando `gen_server:cast/2`.
+%% Ela processa as mensagens sem exigir uma resposta imediata.
+%%
+%% Casos tratados:
+%% <ul>
+%%   <li>`{command_response, Response}`: envia a resposta ao cliente através do socket TCP.</li>
+%%   <li>`_Msg`: qualquer outra mensagem desconhecida é ignorada silenciosamente.</li>
+%% </ul>
+%%
+%% @param Msg term() - A mensagem recebida pelo servidor.
+%% @param State #state{} - Estado atual do servidor gen_server.
+%%
+%% @returns {noreply, NewState}
+%% <ul>
+%%   <li>{@type {noreply, NewState}} - Não há resposta necessária; o servidor continua com o novo estado.</li>
+%% </ul>
+%%
+%% @see gen_server:cast/2
+-spec handle_cast({command_response, term()}, #state{}) -> {noreply, #state{}}.
+handle_cast({command_response, Response}, State) -> 
+    ?LOG_INFO("Conexão recebeu a resposta, enviando para o cliente..."),
+    ok = gen_tcp:send(State#state.clientSocket, list_to_binary(Response)),
+    ?LOG_INFO("Resposta enviada para o cliete com sucesso."),
+    {noreply, State};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
