@@ -35,7 +35,7 @@ jobs:
       run: |
         # O tutorial do Rebar3 recomenda baixar o escript diretamente.
         # Usaremos uma versão estável conhecida (3.26.0) para máxima confiabilidade no CI.
-        REBAR3_VERSION="3.26.0"
+        REBAR3_VERSION="3.25.0"
         echo "Instalando Rebar3 v${REBAR3_VERSION} conforme documentação oficial..."
 
         # Criamos um diretório padrão para binários locais.
