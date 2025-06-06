@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     strategy:
-      # Adicione a linha abaixo para evitar que a CI pare se uma versão falhar
+      # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
       fail-fast: false
       matrix:
         otp: ['28.0', '27.0', '26.2.2']
@@ -49,16 +49,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-
 
-      # Opcional: Cache para o diretório _build
-      # - name: Restore _build cache
-      #   uses: actions/cache@v4
-      #   id: build-cache
-      #   with:
-      #     path: _build
-      #     key: ${{ runner.os }}-build-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config', 'apps/**/src/**/*.erl', 'src/**/*.erl') }}
-      #   restore-keys: |
-      #     ${{ runner.os }}-build-${{ steps.setup-beam.outputs.otp-version }}-
-
       - name: Install Dependencies
         if: steps.hex-cache.outputs.cache-hit != 'true'
         run: rebar3 deps
@@ -69,9 +59,6 @@ jobs:
       - name: Run Dialyzer
         run: rebar3 dialyzer
 
-      # - name: Run Linter (rebar3_lint with Elvis)
-      #   run: rebar3 lint
-
       - name: Run EUnit tests with coverage
         run: rebar3 eunit --cover
 
@@ -79,14 +66,17 @@ jobs:
         run: rebar3 ct --cover
 
       - name: Generate Codecov JSON report (using rebar3_codecov)
+        # Executa sempre para que os artefatos sejam gerados mesmo se os testes falharem.
         if: always()
         run: |
           rebar3 as test codecov analyze || echo "Codecov analysis failed but continuing"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
+        # Condição para enviar o relatório apenas uma vez, usando uma versão específica do OTP.
         if: success() && matrix.otp == '27.0'
         with:
+          # Esta linha usa o segredo que você deve configurar no repositório.
           token: ${{ secrets.CODECOV_TOKEN }}
           files: _build/test/codecov/codecov.json
           fail_ci_if_error: true
