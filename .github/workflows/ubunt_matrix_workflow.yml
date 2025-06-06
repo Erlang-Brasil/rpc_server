@@ -12,7 +12,7 @@ jobs:
       # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
       fail-fast: false
       matrix:
-        otp: ['28.0', '27.0', '26.2.2']
+        otp: ['24.0','28.0', '27.0', '26.2.2']
     env:
       REBAR3_VERSION: '3.25.0'
 
