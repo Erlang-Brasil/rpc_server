@@ -1,4 +1,4 @@
-name: Erlang CI Otimizado
+name: Erlang CI (Alinhado com Tutorial Rebar3)
 
 on:
   push:
@@ -21,42 +21,48 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: 2. Instalar dependências do sistema e Erlang
+    - name: 2. Instalar dependências (Erlang e Curl)
       id: setup_erlang
       run: |
         zypper --non-interactive refresh
-        zypper --non-interactive install -y erlang git wget bash which
+        zypper --non-interactive install -y erlang git bash which curl
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
         echo "Versão do Erlang/OTP instalada: $(erl -version)"
       shell: bash
 
-    - name: 3. Instalar Rebar3 (Versão Corrigida)
+    - name: 3. Instalar Rebar3 (Seguindo o Tutorial Oficial)
       id: install_rebar3
       run: |
-        # Fixando em uma versão estável e mais recente para evitar bugs e falhas na API do GitHub.
+        # O tutorial do Rebar3 recomenda baixar o escript diretamente.
+        # Usaremos uma versão estável conhecida (3.26.0) para máxima confiabilidade no CI.
         REBAR3_VERSION="3.26.0"
-        echo "Instalando Rebar3 versão: ${REBAR3_VERSION}"
-        
+        echo "Instalando Rebar3 v${REBAR3_VERSION} conforme documentação oficial..."
+
+        # Criamos um diretório padrão para binários locais.
         REBAR3_BIN_DIR="$HOME/.local/bin"
         mkdir -p "$REBAR3_BIN_DIR"
+
+        # Baixamos o escript usando curl, como sugere o tutorial.
+        echo "Baixando rebar3..."
+        curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
         
-        wget -q https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 -O "${REBAR3_BIN_DIR}/rebar3"
+        # Tornamos o escript executável.
         chmod +x "${REBAR3_BIN_DIR}/rebar3"
-        
-        # 1. Adiciona o diretório ao PATH para os PASSOS SEGUINTES.
+
+        # Adicionamos ao PATH para este e os próximos passos.
         echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
-        
-        # 2. (A CORREÇÃO) Adiciona o diretório ao PATH para o PASSO ATUAL.
         export PATH="${REBAR3_BIN_DIR}:$PATH"
-        
-        echo "Rebar3 instalado em: $(which rebar3)"
+
+        echo "Rebar3 instalado com sucesso em: $(which rebar3)"
         rebar3 --version
       shell: bash
 
-    - name: 4. Configurar e Restaurar Cache
+    - name: 4. Configurar Cache (Otimização de CI)
       id: cache
       uses: actions/cache@v4
       with:
+        # O cache não está no tutorial 'Getting Started', mas é crucial para CI.
+        # Ele acelera builds futuros, especialmente a análise do Dialyzer.
         path: |
           ~/.cache/rebar3
           _build
@@ -64,31 +70,33 @@ jobs:
         restore-keys: |
           ci-cache-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-
 
-    - name: 5. Compilar dependências e projeto
+    - name: 5. Compilar Projeto
       id: compile
       run: |
+        # O primeiro comando, como no tutorial, é compilar o projeto.
         rebar3 compile
       shell: bash
 
-    - name: 6. Executar análise estática (Xref)
+    - name: 6. Rodar Análise Estática (Xref)
       id: xref
       run: |
         rebar3 xref
       shell: bash
 
-    - name: 7. Executar análise de tipos (Dialyzer)
+    - name: 7. Rodar Análise de Tipos (Dialyzer)
       id: dialyzer
       run: |
-        DIAGNOSTIC=1 rebar3 dialyzer
+        rebar3 dialyzer
       shell: bash
 
-    - name: 8. Rodar testes (EUnit e Common Test)
+    - name: 8. Rodar Testes
       id: tests
       run: |
-        DIAGNOSTIC=1 rebar3 do eunit, ct
+        # O tutorial mostra 'eunit' e 'ct' separadamente, mas podemos combiná-los.
+        rebar3 do eunit, ct
       shell: bash
 
-    - name: 9. Upload de crashdump (em caso de falha)
+    - name: 9. Upload de Crashdump (em caso de falha)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
@@ -98,5 +106,4 @@ jobs:
           ./rebar3.crashdump
           _build/default/rebar3.crashdump
           _build/test/rebar3.crashdump
-        # Alterado para 'warn' para não gerar um erro se o crashdump não existir.
         if-no-files-found: warn
