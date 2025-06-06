@@ -1,5 +1,5 @@
 # Nome do Workflow
-name: Erlang CI Dinâmico
+name: Erlang CI Dinâmico com OpenSUSE
 
 # Gatilhos para execução
 on:
@@ -15,17 +15,19 @@ permissions:
 jobs:
   build:
     # Nome do job, incluindo a versão do OTP da matriz
-    name: OTP ${{ matrix.otp-version }} / Rebar3 ${{ matrix.rebar3-version }}
+    name: OTP ${{ matrix.otp-version }} / Rebar3 ${{ matrix.rebar3-version }} on OpenSUSE
     
-    # Executa em um runner padrão do GitHub
+    # Executa os passos dentro do container especificado
     runs-on: ubuntu-latest
+    container:
+      image: opensuse/tumbleweed:latest
 
     # Define a matriz de combinações para testar
     strategy:
       matrix:
-        # Especifique aqui todas as versões do Erlang/OTP que deseja testar
-        otp-version: ['25.3.2', '26.2.5', '27.0'] 
-        # Especifique as versões do Rebar3 (pode ser uma só)
+        # Versões do Erlang/OTP, incluindo a nova versão 28.0
+        otp-version: ['25.3.2', '26.2.5', '27.0', '28.0']
+        # Versão do Rebar3
         rebar3-version: ['3.22.1']
     
     steps:
@@ -33,48 +35,54 @@ jobs:
     - name: 1. Checkout do código
       uses: actions/checkout@v4
 
-    # 2. Instalação dinâmica de Erlang e Rebar3
-    - name: 2. Setup Erlang/OTP e Rebar3
+    # 2. Instalar dependências essenciais no container
+    - name: 2. Instalar dependências do sistema (no OpenSUSE)
+      run: |
+        zypper --non-interactive refresh
+        zypper --non-interactive install -y curl git sudo tar gzip which
+    
+    # 3. Instalação dinâmica de Erlang e Rebar3
+    - name: 3. Setup Erlang/OTP e Rebar3
       id: setup-beam # Damos um ID para usar seus outputs depois
       uses: erlef/setup-beam@v1
       with:
         otp-version: ${{ matrix.otp-version }}
         rebar3-version: ${{ matrix.rebar3-version }}
 
-    # 3. Configuração do Cache para dependências e build
-    - name: 3. Restaurar cache do Rebar3
+    # 4. Configuração do Cache para dependências e build
+    - name: 4. Restaurar cache do Rebar3
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/rebar3
           _build
         # A chave de cache usa a versão do OTP (output do passo anterior) e o hash do rebar.lock
-        key: ci-cache-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock') }}
+        key: ci-cache-opensuse-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock') }}
         restore-keys: |
-          ci-cache-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-
+          ci-cache-opensuse-${{ steps.setup-beam.outputs.otp-version }}-
 
-    # 4. Compilar o projeto
-    - name: 4. Compilar dependências e projeto
+    # 5. Compilar o projeto
+    - name: 5. Compilar dependências e projeto
       run: rebar3 compile
 
-    # 5. Análise estática com Xref
-    - name: 5. Rodar análise de Xref
+    # 6. Análise estática com Xref
+    - name: 6. Rodar análise de Xref
       run: rebar3 xref
 
-    # 6. Análise de tipos com Dialyzer (PLT é cacheado automaticamente pela action setup-beam)
-    - name: 6. Rodar análise do Dialyzer
+    # 7. Análise de tipos com Dialyzer
+    - name: 7. Rodar análise do Dialyzer
       run: rebar3 dialyzer
 
-    # 7. Executar os testes (EUnit e Common Test)
-    - name: 7. Rodar testes
+    # 8. Executar os testes (EUnit e Common Test)
+    - name: 8. Rodar testes
       run: rebar3 do eunit, ct
 
-    # 8. Fazer upload do crashdump em caso de falha
-    - name: 8. Upload do Crashdump (em caso de falha)
+    # 9. Fazer upload do crashdump em caso de falha
+    - name: 9. Upload do Crashdump (em caso de falha)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         # O nome do artefato agora inclui a versão do OTP para fácil identificação
-        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}
+        name: rebar3-crashdump-opensuse-${{ steps.setup-beam.outputs.otp-version }}
         path: rebar3.crashdump
         if-no-files-found: warn
