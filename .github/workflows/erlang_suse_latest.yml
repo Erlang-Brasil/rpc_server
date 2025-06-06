@@ -25,33 +25,60 @@ jobs:
       id: setup
       shell: bash
       run: |
+        # Variáveis editáveis para versões (deixe vazias para usar a versão instalada do sistema)
+        ERLANG_VERSION="28.0"
+        REBAR3_VERSION="3.25.0"
+
         echo "Instalando bash e dependências do sistema..."
         zypper --non-interactive refresh
         zypper --non-interactive install -y bash erlang git curl which coreutils
 
         echo "Configurando PATH do Erlang..."
-        ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format(\"~s/bin\", [code:root_dir()]), halt().')"
+        ERLANG_ROOT_DIR=$(erl -noshell -eval 'io:format("~s", [code:root_dir()]), halt().' )
+        ERLANG_BIN_DIR="${ERLANG_ROOT_DIR}/bin"
 
-        echo "Instalando Rebar3..."
-        REBAR3_VERSION="3.25.0"
-        REBAR3_BIN_DIR="$HOME/.local/bin"
-        mkdir -p "$REBAR3_BIN_DIR"
-        curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
-        chmod +x "${REBAR3_BIN_DIR}/rebar3"
+        # Captura ou define manualmente a versão do Erlang/OTP
+        if [ -z "$ERLANG_VERSION" ]; then
+          ERLANG_OTP_RELEASE=$(erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().' )
+        else
+          echo "Usando ERLANG_VERSION definida manualmente: $ERLANG_VERSION"
+          ERLANG_OTP_RELEASE="$ERLANG_VERSION"
+        fi
+
+        echo "Versão do Erlang/OTP: $ERLANG_OTP_RELEASE"
+
+        # Instala Rebar3 na versão definida (ou usa a do sistema, se vazio)
+        if [ -z "$REBAR3_VERSION" ]; then
+          echo "REBAR3_VERSION não definida, usando rebar3 do sistema ou cache."
+        else
+          echo "Instalando Rebar3 versão $REBAR3_VERSION..."
+          REBAR3_BIN_DIR="$HOME/.local/bin"
+          mkdir -p "$REBAR3_BIN_DIR"
+          curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
+          chmod +x "${REBAR3_BIN_DIR}/rebar3"
+          export PATH="${REBAR3_BIN_DIR}:$PATH"
+        fi
 
         echo "Exportando paths..."
         echo "${ERLANG_BIN_DIR}" >> $GITHUB_PATH
-        echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
+        if [ -n "$REBAR3_VERSION" ]; then
+          echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
+        fi
 
-        export PATH="${ERLANG_BIN_DIR}:${REBAR3_BIN_DIR}:$PATH"
         echo "--- Verificação ---"
         echo "PATH: $PATH"
-        echo -n "Versão do Erlang: "; erl -version
-        echo -n "Versão do Rebar3: "; rebar3 --version
+        echo -n "Versão do Erlang: "
+        erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().'
+        echo
+        echo -n "Versão do Rebar3: "
+        if command -v rebar3 &> /dev/null; then
+          rebar3 --version
+        else
+          echo "rebar3 não encontrado"
+        fi
         echo "-------------------"
 
-        # Extraindo versão do Erlang/OTP e enviando para outputs
-        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '\"')" >> $GITHUB_OUTPUT
+        echo "ERLANG_OTP_RELEASE=${ERLANG_OTP_RELEASE}" >> $GITHUB_OUTPUT
 
     - name: 3. Configurar Cache
       id: cache
