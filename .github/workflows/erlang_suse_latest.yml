@@ -1,4 +1,4 @@
-name: Erlang CI Definitivo
+name: Erlang CI (com Exportação Ideal de Variáveis)
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: 2. Instalar dependências e Definir Paths
+    - name: 2. Instalar dependências e Adicionar Erlang ao PATH
       id: setup_erlang
       run: |
         zypper --non-interactive refresh
@@ -29,24 +29,19 @@ jobs:
         
         # Descobre o diretório de binários do Erlang
         ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format("~s/bin", [code:root_dir()]), halt().')"
-        echo "Diretório de binários do Erlang: ${ERLANG_BIN_DIR}"
         
-        # Adiciona ao GITHUB_PATH para os passos futuros
+        # A forma ideal: Adiciona o diretório ao GITHUB_PATH.
+        # Ele estará disponível em todos os passos seguintes.
+        echo "Adicionando diretório de binários do Erlang ao PATH: ${ERLANG_BIN_DIR}"
         echo "${ERLANG_BIN_DIR}" >> $GITHUB_PATH
         
-        # --- A CORREÇÃO CRÍTICA ---
-        # Define o caminho como um 'output' para ser usado no próximo passo
-        echo "erlang_bin_dir=${ERLANG_BIN_DIR}" >> $GITHUB_OUTPUT
-        
+        # Define um output apenas para informações que não são do PATH, como a versão.
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
       shell: sh
 
-    - name: 3. Instalar Rebar3
+    - name: 3. Instalar Rebar3 e Adicionar ao PATH
       id: install_rebar3
       run: |
-        # Recebemos o caminho do Erlang do passo anterior
-        ERLANG_BIN_DIR_FROM_STEP2="${{ steps.setup_erlang.outputs.erlang_bin_dir }}"
-        
         REBAR3_VERSION="3.25.0"
         echo "Instalando Rebar3 v${REBAR3_VERSION}..."
 
@@ -56,15 +51,17 @@ jobs:
         echo "Baixando rebar3..."
         curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
         chmod +x "${REBAR3_BIN_DIR}/rebar3"
-
-        # Adiciona o diretório do Rebar3 ao GITHUB_PATH
+        
+        # Forma ideal: Adiciona o diretório do Rebar3 ao GITHUB_PATH.
+        # Agora o PATH completo (Erlang + Rebar3) está disponível para os próximos passos.
+        echo "Adicionando diretório de binários do Rebar3 ao PATH: ${REBAR3_BIN_DIR}"
         echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
         
-        # Constrói o PATH para a sessão atual usando o valor do output
-        export PATH="${ERLANG_BIN_DIR_FROM_STEP2}:${REBAR3_BIN_DIR}:$PATH"
+        # Como GITHUB_PATH só afeta os próximos passos, usamos 'export'
+        # para que o 'rebar3 --version' funcione neste passo atual.
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
 
-        echo "PATH da sessão atual: $PATH"
-        echo "Rebar3 instalado em: $(which rebar3)"
+        echo "Rebar3 instalado com sucesso em: $(which rebar3)"
         rebar3 --version
       shell: /usr/bin/bash {0}
 
@@ -82,6 +79,8 @@ jobs:
     - name: 5. Compilar Projeto
       id: compile
       run: |
+        # Este passo herda o PATH com os caminhos do Erlang e Rebar3.
+        # Não é necessário fazer mais nada.
         rebar3 compile
       shell: /usr/bin/bash {0}
 
