@@ -19,23 +19,22 @@ jobs:
     - name: 1. Checkout do código
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # Necessário para algumas análises e versionamento
+        fetch-depth: 0
 
     - name: 2. Instalar dependências do sistema e Erlang
       id: setup_erlang
       run: |
         zypper --non-interactive refresh
         zypper --non-interactive install -y erlang git wget bash which
-        # Cria um output com a versão do OTP para usar na chave do cache
         echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
         echo "Versão do Erlang/OTP instalada: $(erl -version)"
       shell: bash
 
-    - name: 3. Instalar Rebar3 (Última Versão)
+    - name: 3. Instalar Rebar3 (Versão Corrigida)
       id: install_rebar3
       run: |
-        # Busca dinamicamente a tag da última versão estável do Rebar3
-        REBAR3_VERSION=$(wget -q -O- "https://api.github.com/repos/erlang/rebar3/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        # Fixando em uma versão estável e mais recente para evitar bugs e falhas na API do GitHub.
+        REBAR3_VERSION="3.26.0"
         echo "Instalando Rebar3 versão: ${REBAR3_VERSION}"
         
         REBAR3_BIN_DIR="$HOME/.local/bin"
@@ -44,8 +43,11 @@ jobs:
         wget -q https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3 -O "${REBAR3_BIN_DIR}/rebar3"
         chmod +x "${REBAR3_BIN_DIR}/rebar3"
         
-        # Adiciona o diretório do Rebar3 ao PATH para todos os passos seguintes
+        # 1. Adiciona o diretório ao PATH para os PASSOS SEGUINTES.
         echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
+        
+        # 2. (A CORREÇÃO) Adiciona o diretório ao PATH para o PASSO ATUAL.
+        export PATH="${REBAR3_BIN_DIR}:$PATH"
         
         echo "Rebar3 instalado em: $(which rebar3)"
         rebar3 --version
@@ -55,11 +57,9 @@ jobs:
       id: cache
       uses: actions/cache@v4
       with:
-        # Cacheia o diretório de build e o cache do rebar3 (que inclui o PLT do Dialyzer)
         path: |
           ~/.cache/rebar3
           _build
-        # A chave de cache é invalidada se a versão do Erlang, SO, ou as dependências (rebar.lock) mudarem.
         key: ci-cache-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-${{ hashFiles('**/rebar.lock') }}
         restore-keys: |
           ci-cache-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-
@@ -67,7 +67,6 @@ jobs:
     - name: 5. Compilar dependências e projeto
       id: compile
       run: |
-        # Compila tudo uma única vez. Os artefatos serão usados pelos passos seguintes.
         rebar3 compile
       shell: bash
 
@@ -80,8 +79,6 @@ jobs:
     - name: 7. Executar análise de tipos (Dialyzer)
       id: dialyzer
       run: |
-        # Se o cache foi restaurado com um PLT válido, este passo será muito rápido.
-        # A variável DIAGNOSTIC=1 é mantida para obter logs detalhados em caso de falha.
         DIAGNOSTIC=1 rebar3 dialyzer
       shell: bash
 
@@ -92,7 +89,6 @@ jobs:
       shell: bash
 
     - name: 9. Upload de crashdump (em caso de falha)
-      # Este passo executa se qualquer um dos passos anteriores falhar
       if: failure()
       uses: actions/upload-artifact@v4
       with:
@@ -102,4 +98,5 @@ jobs:
           ./rebar3.crashdump
           _build/default/rebar3.crashdump
           _build/test/rebar3.crashdump
-        if-no-files-found: error # Use 'error' or 'warn' para saber se o arquivo não foi encontrado
+        # Alterado para 'warn' para não gerar um erro se o crashdump não existir.
+        if-no-files-found: warn
