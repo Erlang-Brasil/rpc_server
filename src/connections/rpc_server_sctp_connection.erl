@@ -7,6 +7,8 @@
 -vsn(?MODULO_VERSAO).
 -behaviour(gen_server).
 
+-ignore_xref([{start_link, 1}]).
+
 -record(state, {
     clientSocket :: socket() | undefined,
     listenSocket :: socket() | undefined,
@@ -36,7 +38,7 @@
 %%%          Retorna `{ok, Pid}` se o servidor foi iniciado com sucesso,
 %%%          ou `{error, Reason}` caso contrário.
 %%%
--spec start_link([]) -> {ok, pid()} | {error, term()}.
+-spec start_link(list()) -> {ok, pid()} | {error, term()}.
 start_link([ClientSocket, ListenSocket]) ->
     gen_server:start_link(?MODULE, [ClientSocket, ListenSocket], []).
 
@@ -57,7 +59,7 @@ start_link([ClientSocket, ListenSocket]) ->
 %%%          Retorna `{ok, State}` se a inicialização foi bem-sucedida,
 %%%          ou `{stop, Reason}` caso ocorra um erro (por exemplo, falha em obter o endereço do cliente).
 %%%
--spec init([]) -> {ok, #state{}} | {stop, term()}.
+-spec init(list()) -> {ok, #state{}} | {stop, term()}.
 init([ClientSocket, ListenSocket]) ->
     ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p | Versão ~p", [ListenSocket, ClientSocket, ?MODULO_VERSAO]),
     ShellInstancePid = rpc_server_shell_manager_sup:start_shell(ClientSocket, self()),
@@ -205,7 +207,7 @@ handle_info(_Info, State) ->
 %%%
 %%% @returns ok | any() - Deve sempre retornar `ok` a menos que precise registrar erros extras.
 %%%
--spec terminate(term(), #state{}) -> {ok}.
+-spec terminate(term(), #state{}) -> ok.
 terminate(Reason, #state{clientSocket = Socket}) ->
     ?LOG_INFO("Terminando conexão: ~p", [Reason]),
     gen_tcp:close(Socket),
