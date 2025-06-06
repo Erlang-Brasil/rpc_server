@@ -1,4 +1,4 @@
-name: Erlang CI (com Exportação Ideal de Variáveis)
+name: Erlang CI (com Setup Unificado)
 
 on:
   push:
@@ -21,92 +21,87 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: 2. Instalar dependências e Adicionar Erlang ao PATH
-      id: setup_erlang
+    - name: 2. Instalar Erlang e Rebar3 (Setup Unificado)
+      id: setup
       run: |
+        # ETAPA 1: INSTALAR DEPENDÊNCIAS DO SISTEMA
+        echo "Instalando dependências do sistema..."
         zypper --non-interactive refresh
         zypper --non-interactive install -y erlang git bash which curl coreutils
         
-        # Descobre o diretório de binários do Erlang
+        # ETAPA 2: CONFIGURAR PATH DO ERLANG
+        echo "Configurando PATH do Erlang..."
         ERLANG_BIN_DIR="$(erl -noshell -eval 'io:format("~s/bin", [code:root_dir()]), halt().')"
+        echo "Diretório de binários do Erlang: ${ERLANG_BIN_DIR}"
         
-        # A forma ideal: Adiciona o diretório ao GITHUB_PATH.
-        # Ele estará disponível em todos os passos seguintes.
-        echo "Adicionando diretório de binários do Erlang ao PATH: ${ERLANG_BIN_DIR}"
-        echo "${ERLANG_BIN_DIR}" >> $GITHUB_PATH
-        
-        # Define um output apenas para informações que não são do PATH, como a versão.
-        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
-      shell: sh
-
-    - name: 3. Instalar Rebar3 e Adicionar ao PATH
-      id: install_rebar3
-      run: |
+        # ETAPA 3: INSTALAR REBAR3
+        echo "Instalando Rebar3..."
         REBAR3_VERSION="3.25.0"
-        echo "Instalando Rebar3 v${REBAR3_VERSION}..."
-
         REBAR3_BIN_DIR="$HOME/.local/bin"
         mkdir -p "$REBAR3_BIN_DIR"
-
-        echo "Baixando rebar3..."
         curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
         chmod +x "${REBAR3_BIN_DIR}/rebar3"
-        
-        # Forma ideal: Adiciona o diretório do Rebar3 ao GITHUB_PATH.
-        # Agora o PATH completo (Erlang + Rebar3) está disponível para os próximos passos.
-        echo "Adicionando diretório de binários do Rebar3 ao PATH: ${REBAR3_BIN_DIR}"
-        echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
-        
-        # Como GITHUB_PATH só afeta os próximos passos, usamos 'export'
-        # para que o 'rebar3 --version' funcione neste passo atual.
-        export PATH="${REBAR3_BIN_DIR}:$PATH"
+        echo "Diretório de binários do Rebar3: ${REBAR3_BIN_DIR}"
 
-        echo "Rebar3 instalado com sucesso em: $(which rebar3)"
-        rebar3 --version
+        # ETAPA 4: EXPORTAR O PATH COMBINADO PARA OS PRÓXIMOS PASSOS
+        # Adicionamos ambos os diretórios ao GITHUB_PATH de uma vez.
+        echo "Exportando paths para os próximos passos..."
+        echo "${ERLANG_BIN_DIR}" >> $GITHUB_PATH
+        echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
+
+        # ETAPA 5: VERIFICAÇÃO FINAL
+        # Exportamos o PATH para a sessão atual para verificação.
+        export PATH="${ERLANG_BIN_DIR}:${REBAR3_BIN_DIR}:$PATH"
+        echo "--- Verificação do Ambiente ---"
+        echo "PATH completo: $PATH"
+        echo -n "Versão do Erlang: "; erl -version
+        echo -n "Versão do Rebar3: "; rebar3 --version
+        echo "--------------------------"
+        
+        # Define um output para a chave do cache, que é um uso correto para 'outputs'.
+        echo "ERLANG_OTP_RELEASE=$(erl -noshell -eval 'erlang:display(erlang:system_info(otp_release)), halt().' | tr -d '"')" >> $GITHUB_OUTPUT
       shell: /usr/bin/bash {0}
 
-    - name: 4. Configurar Cache
+    - name: 3. Configurar Cache
       id: cache
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/rebar3
           _build
-        key: ci-cache-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-${{ hashFiles('**/rebar.lock') }}
+        key: ci-cache-${{ runner.os }}-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}-${{ hashFiles('**/rebar.lock') }}
         restore-keys: |
-          ci-cache-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}-
+          ci-cache-${{ runner.os }}-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}-
 
-    - name: 5. Compilar Projeto
+    - name: 4. Compilar Projeto
       id: compile
       run: |
-        # Este passo herda o PATH com os caminhos do Erlang e Rebar3.
-        # Não é necessário fazer mais nada.
         rebar3 compile
       shell: /usr/bin/bash {0}
 
-    - name: 6. Rodar Análise Estática (Xref)
+    - name: 5. Rodar Análise Estática (Xref)
       id: xref
       run: |
         rebar3 xref
       shell: /usr/bin/bash {0}
 
-    - name: 7. Rodar Análise de Tipos (Dialyzer)
+    - name: 6. Rodar Análise de Tipos (Dialyzer)
       id: dialyzer
       run: |
         rebar3 dialyzer
       shell: /usr/bin/bash {0}
 
-    - name: 8. Rodar Testes
+    - name: 7. Rodar Testes
       id: tests
       run: |
         rebar3 do eunit, ct
       shell: /usr/bin/bash {0}
 
-    - name: 9. Upload de Crashdump (em caso de falha)
+    - name: 8. Upload de Crashdump (em caso de falha)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup_erlang.outputs.ERLANG_OTP_RELEASE }}
+        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}
         path: |
           rebar3.crashdump
           ./rebar3.crashdump
