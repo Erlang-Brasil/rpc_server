@@ -1,116 +1,80 @@
-name: Erlang CI (com Setup Unificado)
+# Nome do Workflow
+name: Erlang CI Dinâmico
 
+# Gatilhos para execução
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
+# Permissões mínimas para o job
 permissions:
   contents: read
 
 jobs:
   build:
+    # Nome do job, incluindo a versão do OTP da matriz
+    name: OTP ${{ matrix.otp-version }} / Rebar3 ${{ matrix.rebar3-version }}
+    
+    # Executa em um runner padrão do GitHub
     runs-on: ubuntu-latest
-    container:
-      image: opensuse/tumbleweed:latest
 
+    # Define a matriz de combinações para testar
+    strategy:
+      matrix:
+        # Especifique aqui todas as versões do Erlang/OTP que deseja testar
+        otp-version: ['25.3.2', '26.2.5', '27.0'] 
+        # Especifique as versões do Rebar3 (pode ser uma só)
+        rebar3-version: ['3.22.1']
+    
     steps:
+    # 1. Checkout do código-fonte
     - name: 1. Checkout do código
       uses: actions/checkout@v4
+
+    # 2. Instalação dinâmica de Erlang e Rebar3
+    - name: 2. Setup Erlang/OTP e Rebar3
+      id: setup-beam # Damos um ID para usar seus outputs depois
+      uses: erlef/setup-beam@v1
       with:
-        fetch-depth: 0
+        otp-version: ${{ matrix.otp-version }}
+        rebar3-version: ${{ matrix.rebar3-version }}
 
-    - name: 2. Instalar Erlang e Rebar3 (Setup Unificado)
-      id: setup
-      shell: bash
-      run: |
-        # Variáveis editáveis para versões (deixe vazias para usar a versão instalada do sistema)
-        ERLANG_VERSION="28.0"
-        REBAR3_VERSION="3.25.0"
-
-        echo "Instalando bash e dependências do sistema..."
-        zypper --non-interactive refresh
-        zypper --non-interactive install -y bash erlang git curl which coreutils
-
-        echo "Configurando PATH do Erlang..."
-        ERLANG_ROOT_DIR=$(erl -noshell -eval 'io:format("~s", [code:root_dir()]), halt().' )
-        ERLANG_BIN_DIR="${ERLANG_ROOT_DIR}/bin"
-
-        # Captura ou define manualmente a versão do Erlang/OTP
-        if [ -z "$ERLANG_VERSION" ]; then
-          ERLANG_OTP_RELEASE=$(erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().' )
-        else
-          echo "Usando ERLANG_VERSION definida manualmente: $ERLANG_VERSION"
-          ERLANG_OTP_RELEASE="$ERLANG_VERSION"
-        fi
-
-        echo "Versão do Erlang/OTP: $ERLANG_OTP_RELEASE"
-
-        # Instala Rebar3 na versão definida (ou usa a do sistema, se vazio)
-        if [ -z "$REBAR3_VERSION" ]; then
-          echo "REBAR3_VERSION não definida, usando rebar3 do sistema ou cache."
-        else
-          echo "Instalando Rebar3 versão $REBAR3_VERSION..."
-          REBAR3_BIN_DIR="$HOME/.local/bin"
-          mkdir -p "$REBAR3_BIN_DIR"
-          curl -fLso "${REBAR3_BIN_DIR}/rebar3" "https://github.com/erlang/rebar3/releases/download/${REBAR3_VERSION}/rebar3"
-          chmod +x "${REBAR3_BIN_DIR}/rebar3"
-          export PATH="${REBAR3_BIN_DIR}:$PATH"
-        fi
-
-        echo "Exportando paths..."
-        echo "${ERLANG_BIN_DIR}" >> $GITHUB_PATH
-        if [ -n "$REBAR3_VERSION" ]; then
-          echo "${REBAR3_BIN_DIR}" >> $GITHUB_PATH
-        fi
-
-        echo "--- Verificação ---"
-        echo "PATH: $PATH"
-        echo -n "Versão do Erlang: "
-        erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().'
-        echo
-        echo -n "Versão do Rebar3: "
-        if command -v rebar3 &> /dev/null; then
-          rebar3 --version
-        else
-          echo "rebar3 não encontrado"
-        fi
-        echo "-------------------"
-
-        echo "ERLANG_OTP_RELEASE=${ERLANG_OTP_RELEASE}" >> $GITHUB_OUTPUT
-
-    - name: 3. Configurar Cache
-      id: cache
+    # 3. Configuração do Cache para dependências e build
+    - name: 3. Restaurar cache do Rebar3
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/rebar3
           _build
-        key: ci-cache-${{ runner.os }}-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}-${{ hashFiles('**/rebar.lock') }}
+        # A chave de cache usa a versão do OTP (output do passo anterior) e o hash do rebar.lock
+        key: ci-cache-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock') }}
         restore-keys: |
-          ci-cache-${{ runner.os }}-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}-
+          ci-cache-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}-
 
-    - name: 4. Compilar Projeto
+    # 4. Compilar o projeto
+    - name: 4. Compilar dependências e projeto
       run: rebar3 compile
 
-    - name: 5. Rodar Análise Estática (Xref)
+    # 5. Análise estática com Xref
+    - name: 5. Rodar análise de Xref
       run: rebar3 xref
 
-    - name: 6. Rodar Análise de Tipos (Dialyzer)
+    # 6. Análise de tipos com Dialyzer (PLT é cacheado automaticamente pela action setup-beam)
+    - name: 6. Rodar análise do Dialyzer
       run: rebar3 dialyzer
 
-    - name: 7. Rodar Testes
+    # 7. Executar os testes (EUnit e Common Test)
+    - name: 7. Rodar testes
       run: rebar3 do eunit, ct
 
-    - name: 8. Upload de Crashdump (em caso de falha)
+    # 8. Fazer upload do crashdump em caso de falha
+    - name: 8. Upload do Crashdump (em caso de falha)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup.outputs.ERLANG_OTP_RELEASE }}
-        path: |
-          rebar3.crashdump
-          ./rebar3.crashdump
-          _build/default/rebar3.crashdump
-          _build/test/rebar3.crashdump
+        # O nome do artefato agora inclui a versão do OTP para fácil identificação
+        name: rebar3-crashdump-${{ runner.os }}-${{ steps.setup-beam.outputs.otp-version }}
+        path: rebar3.crashdump
         if-no-files-found: warn
