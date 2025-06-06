@@ -25,6 +25,8 @@ jobs:
       # Ex: opensuse/tumbleweed:YYYYMMDD. Veja a Seção III.A do relatório.
       # Mantendo :latest conforme o original, mas com ressalvas sobre reprodutibilidade.
       image: opensuse/tumbleweed:latest
+    env:
+      ImageOS: ubunto22
 
     # Define a matriz de combinações para testar
     strategy:
