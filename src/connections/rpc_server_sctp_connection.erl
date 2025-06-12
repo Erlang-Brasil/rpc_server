@@ -60,15 +60,13 @@ start_link([ClientSocket, ListenSocket]) ->
 -spec init([]) -> {ok, #state{}} | {stop, term()}.
 init([ClientSocket, ListenSocket]) ->
     ?LOG_INFO("Iniciando conexao Listen Socket: ~p | Client Socket: ~p | Versão ~p", [ListenSocket, ClientSocket, ?MODULO_VERSAO]),
-    ShellInstancePid = rpc_server_shell_manager_sup:start_shell(ClientSocket, self()),
 
     case inet:peername(ClientSocket) of
         {ok, {_, _}} ->
             case inet:setopts(ClientSocket, [{active, true}]) of
                 ok ->
                     ?LOG_INFO("Socket configurado para modo ativo"),
-                    gen_server:cast(self(), {process_request, ListenSocket, ClientSocket}),
-                    {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket, shellInstancePid = ShellInstancePid}};
+                    {ok, #state{listenSocket = ListenSocket, clientSocket = ClientSocket}};
                 {error, Reason} ->
                     ?LOG_ERROR("Falha ao configurar socket para modo ativo: ~p", [Reason]),
                     gen_tcp:close(ClientSocket),
@@ -158,10 +156,10 @@ handle_cast(_Msg, State) ->
 %%%
 -spec handle_info({tcp | tcp_closed | tcp_error, inet:socket(), term()}, #state{}) -> {noreply, #state{}}.   
 handle_info({tcp, Socket, Data}, #state{clientSocket = Socket} = State) ->
-    ?LOG_INFO("Enviando commando ~p para o shell ~p", [Data, State#state.shellInstancePid]),
-    gen_server:cast(State#state.shellInstancePid, {execute_command, Data}), 
-    {noreply, State};
- 
+    ?LOG_INFO("TCP handler chamado - Socket: ~p, Data: ~p", [Socket, Data]),
+    Command = parser_command:parse(Data),
+    NewState = handle_command(Command, State),
+    {noreply, NewState};
 
 %%% @doc Manipula o fechamento de uma conexão TCP pelo cliente.
 %%%
@@ -213,7 +211,8 @@ handle_info({tcp_error, Socket, Reason}, #state{clientSocket = Socket} = State) 
 %%% @returns {noreply, #state{}} - Retorna sem resposta e mantém o estado inalterado.
 %%%
 handle_info(_Info, State) ->
-    ?LOG_INFO("Connection recebeu mensagem nao tratada"),
+    ?LOG_INFO("Connection recebeu mensagem nao tratada: ~p", [_Info]),
+    ?LOG_INFO("Connection state: ~p", [State]),
     {noreply, State}.
 
 
@@ -255,3 +254,51 @@ terminate(Reason, #state{clientSocket = Socket}) ->
 -spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+
+% TODO: REFATORAR ISSO, SEM TEMPO AGORA
+handle_command({<<"reconnect">>, HashBin}, State = #state{shellInstancePid = undefined}) when is_binary(HashBin) ->
+    HashStr = binary_to_list(HashBin),
+    case catch list_to_integer(HashStr) of
+        HashInt when is_integer(HashInt) ->
+            case ets:lookup(connection_table, HashInt) of
+                [{HashInt, Pid}] when is_pid(Pid) ->
+                    ?LOG_INFO("Encontrou a instância do shell anterior"),
+                    ?LOG_INFO("Verificando se processo ~p está vivo: ~p", [Pid, is_process_alive(Pid)]),
+                    ?LOG_INFO("Enviando mensagem de reconexão para ~p", [Pid]),
+                    ?LOG_INFO("Mensagem sendo enviada: {reconnected, ~p, ~p}", [self(), State#state.clientSocket]),
+                    gen_server:cast(Pid, {reconnected, self(), State#state.clientSocket}),
+                    State#state{shellInstancePid = Pid};
+                [] ->
+                    ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell...~n"),
+                    ShellPid = rpc_server_shell_manager_sup:start_shell(State#state.clientSocket, self()),
+                    State#state{shellInstancePid = ShellPid};
+                _ ->
+                    ?LOG_INFO("Registro encontrado na ETS, mas PID inválido para hash ~p~n", [HashInt]),
+                    State
+            end;
+        _ ->
+            ?LOG_ERROR("Hash inválido recebido para reconexão: ~p", [HashBin]),
+            State
+    end;
+
+handle_command({<<"reconnect">>, HashBin}, State = #state{shellInstancePid = Pid}) 
+    when is_binary(HashBin), is_pid(Pid) ->
+      ?LOG_INFO("O cliente já possui uma conexão ativa. Ignorando tentativa de reconexão duplicada."),
+      gen_server:cast(self(), {command_response, "Você ja esta conectado.\n"}),
+      State;
+
+handle_command(Cmd, State) ->
+    NewState = validar_conexao(State),
+    gen_server:cast(NewState#state.shellInstancePid, {execute_command, Cmd}),
+    io:format("Enviando comando: ~p~n", [Cmd]),
+    NewState.
+
+validar_conexao(State = #state{shellInstancePid = undefined}) ->
+    ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell...~n"),
+    ShellPid = rpc_server_shell_manager_sup:start_shell(State#state.clientSocket, self()),
+    State#state{shellInstancePid = ShellPid};
+
+validar_conexao(State) ->
+    State.

@@ -11,12 +11,13 @@
 
 %% API
 -export([start_link/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3, handle_hibernate/1]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {
     socket :: socket() | undefined,
     connection :: pid() | undefined,
-    hashId :: term() | undefined
+    hashId :: term() | undefined,
+    status :: connected | disconnected
 }).
 
 start_link([ClientSocket, ConnectionPid]) ->
@@ -28,7 +29,7 @@ init([ClientSocket, ConnectionPid]) ->
     ?LOG_INFO("Iniciando shell ClientSocket ~p | ConnectionPid ~p | Hash ~p | Versão ~p", [ClientSocket, ConnectionPid, HashId, ?MODULO_VERSAO]),
     gen_server:cast(ConnectionPid, {command_response, io_lib:format("Client identification ~p~n", [HashId])}),
     
-    {ok, #state{connection = ConnectionPid, socket = ClientSocket, hashId = HashId}}.
+    {ok, #state{connection = ConnectionPid, socket = ClientSocket, hashId = HashId, status = connected}}.
 
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
@@ -37,36 +38,53 @@ handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 handle_cast({hibernate}, State = #state{socket = _}) ->
-    ?LOG_INFO("[SHELL INSTANCE] - Conexão com o cliente interrompida, hibernando o shell..."),
-    proc_lib:hibernate(?MODULE, handle_hibernate, [State]);
+    ?LOG_INFO("[SHELL INSTANCE] - Conexão com o cliente interrompida, marcando como desconectado..."),
+    ?LOG_INFO("[SHELL INSTANCE] - Estado antes da desconexão: ~p", [State]),
+    NewState = State#state{status = disconnected},
+    ?LOG_INFO("[SHELL INSTANCE] - Estado após hibernação: ~p", [NewState]),
+    {noreply, NewState};
+
+handle_cast({reconnected, ConnectionPid, ClientSocket}, State) ->
+    ?LOG_INFO("[SHELL INSTANCE] - Recebida mensagem de reconexão: ConnectionPid=~p, ClientSocket=~p", [ConnectionPid, ClientSocket]),
+    ?LOG_INFO("[SHELL INSTANCE] - Conexão restabelecida com o cliente, shell pronto..."),
+    ?LOG_INFO("[SHELL INSTANCE] - Nova ConnectionPid: ~p, Novo ClientSocket: ~p", [ConnectionPid, ClientSocket]),
+    ?LOG_INFO("[SHELL INSTANCE] - Estado atual: ~p", [State]),
+    gen_server:cast(ConnectionPid, {command_response, "Conexao restabelecida\n"}),
+    NewState = State#state{connection = ConnectionPid, socket = ClientSocket, hashId = State#state.hashId, status = connected},
+    ?LOG_INFO("[SHELL INSTANCE] - Estado após reconexão: ~p", [NewState]),
+    {noreply, NewState};
 
 handle_cast({execute_command, Command}, State = #state{socket = _}) ->
-    ?LOG_INFO("[SHELL INSTANCE] - Executando comando ~p", [Command]),
-     
-    CommandStr = re:replace(binary_to_list(Command), "[\r\n]+$", "", [{return, list}]),
-    ?LOG_INFO("[SHELL INSTANCE] - Resultado comando limpo ~p", [CommandStr]), 
-    
-    %% TODO: COLOCAR UM TIMEOUT NA EXECUCAO DO COMANDO
-    %% TODO: VALIDAR O COMANDO
-    ShellCmd = io_lib:format("/bin/sh -c ~p", [CommandStr]),
-    ?LOG_INFO("[SHELL INSTANCE] - Comando shell final: ~p", [ShellCmd]),
-    Port = open_port({spawn, ShellCmd}, [stream, in, eof, hide, exit_status]),
-    {ExitCode, Output} = get_data(Port, []),
-    ?LOG_INFO("[SHELL INSTANCE] - Resultado shell ~p", [{ExitCode, Output}]),
-    
-    gen_server:cast(State#state.connection, {command_response, io_lib:format("~s~n", [Output])}),
-    
-    {noreply, State};
+    case State#state.status of
+        disconnected ->
+            ?LOG_INFO("[SHELL INSTANCE] - Tentativa de executar comando enquanto desconectado: ~p", [Command]),
+            {noreply, State};
+        connected ->
+            ?LOG_INFO("[SHELL INSTANCE] - Executando comando ~p", [Command]),
+             
+            CommandStr = re:replace(binary_to_list(Command), "[\r\n]+$", "", [{return, list}]),
+            ?LOG_INFO("[SHELL INSTANCE] - Resultado comando limpo ~p", [CommandStr]), 
+            
+            %% TODO: COLOCAR UM TIMEOUT NA EXECUCAO DO COMANDO
+            %% TODO: VALIDAR O COMANDO
+            ShellCmd = io_lib:format("/bin/sh -c ~p", [CommandStr]),
+            ?LOG_INFO("[SHELL INSTANCE] - Comando shell final: ~p", [ShellCmd]),
+            Port = open_port({spawn, ShellCmd}, [stream, in, eof, hide, exit_status]),
+            {ExitCode, Output} = get_data(Port, []),
+            ?LOG_INFO("[SHELL INSTANCE] - Resultado shell ~p", [{ExitCode, Output}]),
+            
+            gen_server:cast(State#state.connection, {command_response, io_lib:format("~s~n", [Output])}),
+            
+            {noreply, State}
+    end;
 
 handle_cast(_Msg, State) ->
+    ?LOG_INFO("[SHELL INSTANCE] - Mensagem cast genérica recebida: ~p", [_Msg]),
     {noreply, State}.
 
 handle_info(_Info, State) ->
+    ?LOG_INFO("[SHELL INSTANCE] - Mensagem info recebida: ~p", [_Info]),
     {noreply, State}.
-
-handle_hibernate(State) ->
-    {noreply, State, hibernate}.
- 
 
 terminate(_Reason, _State) ->
     ok.
