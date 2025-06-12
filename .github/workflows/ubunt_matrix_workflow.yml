@@ -12,9 +12,33 @@ jobs:
       # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
       fail-fast: false
       matrix:
-        otp: ['24.3.4.17','25.3.2.21', 28.0', '26.2.5.12', '27.3.4']
-    env:
-      REBAR3_VERSION: '3.25.0'
+        # Define as combinações específicas de OTP e Rebar3 que devem ser executadas.
+        # Adicione aqui apenas as versões que você sabe que são compatíveis.
+        include:
+          # rebar3 3.24.0 é compatível com OTP 25-27
+          - otp: '25.3.2.21'
+            rebar3: '3.24.0'
+          - otp: '26.2.5.12'
+            rebar3: '3.24.0'
+          - otp: '27.3.4'
+            rebar3: '3.24.0'
+          # rebar3 3.25.0 é compatível com OTP 26-28
+          - otp: '26.2.5.12'
+            rebar3: '3.25.0'
+          - otp: '27.3.4'
+            rebar3: '3.25.0'
+          - otp: '28.0'
+            rebar3: '3.25.0'
+          # Adicionadas versões compatíveis para OTP 24.3.4.17
+          # rebar3 3.21.0, 3.20.0 e 3.19.0 são compatíveis com OTP 24
+          - otp: '24.3.4.17'
+            rebar3: '3.21.0'
+          - otp: '24.3.4.17'
+            rebar3: '3.20.0'
+          - otp: '24.3.4.17'
+            rebar3: '3.19.0'
+    #env:
+      # A versão do rebar3 agora é definida por cada par na matriz 'include'.
 
     steps:
       - name: Checkout code
@@ -25,7 +49,8 @@ jobs:
         id: setup-beam
         with:
           otp-version: ${{ matrix.otp }}
-          rebar3-version: ${{ env.REBAR3_VERSION }}
+          # Agora usa a versão do rebar3 da matriz
+          rebar3-version: ${{ matrix.rebar3 }}
 
       - name: Restore Hex package cache
         uses: actions/cache@v4
@@ -86,7 +111,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-otp-${{ matrix.otp }}
+          name: test-results-otp-${{ matrix.otp }}-rebar3-${{ matrix.rebar3 }}
           path: |
             _build/test/logs/
             _build/test/cover/
