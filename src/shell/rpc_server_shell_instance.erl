@@ -120,17 +120,7 @@ gen_hash_identification({IP, Port}) when is_tuple(IP), (size(IP) == 4 orelse siz
 gen_hash_from_ip_port(IP, Port) ->
     IPStr = inet:ntoa(IP),
     Str = lists:flatten(io_lib:format("~s:~p", [IPStr, Port])),
-    djb_hash(list_to_binary(Str)).
-
-%% @private
-%% Implementação do DJB hash
-djb_hash(Bin) when is_binary(Bin) ->
-    djb_hash(Bin, 5381).
-
-djb_hash(<<C, Rest/binary>>, Hash) ->
-    djb_hash(Rest, Hash * 33 + C);
-djb_hash(<<>>, Hash) ->
-    Hash.
+    crypto:hash(sha256, Str).
     
 
 
