@@ -7,6 +7,8 @@ permissions:
 
 jobs:
   build:
+    # Nome do job customizado para exibição mais clara no GitHub Actions UI
+    name: OTP ${{ matrix.otp }} Rebar3 ${{ matrix.rebar3 }}
     runs-on: ubuntu-24.04
     strategy:
       # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
