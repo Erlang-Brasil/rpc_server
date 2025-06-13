@@ -1,0 +1,122 @@
+name: Erlang CI on Ubuntu
+
+on: [push, pull_request]
+
+permissions:
+  contents: read # Necessário para actions/checkout
+
+jobs:
+  build:
+    # Nome do job customizado para exibição mais clara no GitHub Actions UI
+    name: OTP ${{ matrix.otp }} Rebar3 ${{ matrix.rebar3 }}
+    runs-on: ubuntu-24.04
+    strategy:
+      # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
+      fail-fast: false
+      matrix:
+        # Define as combinações específicas de OTP e Rebar3 que devem ser executadas.
+        # Adicione aqui apenas as versões que você sabe que são compatíveis.
+        include:
+          # rebar3 3.24.0 é compatível com OTP 25-27
+          - otp: '25.3.2.21'
+            rebar3: '3.24.0'
+          - otp: '26.2.5.12'
+            rebar3: '3.24.0'
+          - otp: '27.3.4'
+            rebar3: '3.24.0'
+          # rebar3 3.25.0 é compatível com OTP 26-28
+          - otp: '26.2.5.12'
+            rebar3: '3.25.0'
+          - otp: '27.3.4'
+            rebar3: '3.25.0'
+          - otp: '28.0'
+            rebar3: '3.25.0'
+          # Adicionadas versões compatíveis para OTP 24.3.4.17
+          # rebar3 3.21.0, 3.20.0 e 3.19.0 são compatíveis com OTP 24
+          - otp: '24.3.4.17'
+            rebar3: '3.21.0'
+          - otp: '24.3.4.17'
+            rebar3: '3.20.0'
+          - otp: '24.3.4.17'
+            rebar3: '3.19.0'
+    #env:
+      # A versão do rebar3 agora é definida por cada par na matriz 'include'.
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1
+        id: setup-beam
+        with:
+          otp-version: ${{ matrix.otp }}
+          # Agora usa a versão do rebar3 da matriz
+          rebar3-version: ${{ matrix.rebar3 }}
+
+      - name: Restore Hex package cache
+        uses: actions/cache@v4
+        id: hex-cache
+        with:
+          path: |
+            ~/.cache/rebar3/hex
+            ~/.hex
+          key: ${{ runner.os }}-hex-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-hex-${{ steps.setup-beam.outputs.otp-version }}-
+
+      - name: Restore Dialyzer PLT cache
+        uses: actions/cache@v4
+        id: plt-cache
+        with:
+          path: |
+            ~/.cache/rebar3/plt_*.ets
+            _build/default/rebar3_*.plt
+          key: ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config') }}
+          restore-keys: |
+            ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-
+
+      - name: Install Dependencies
+        if: steps.hex-cache.outputs.cache-hit != 'true'
+        run: rebar3 deps
+
+      - name: Compile
+        run: rebar3 compile
+
+      - name: Run Dialyzer
+        run: rebar3 dialyzer
+
+      - name: Run EUnit tests with coverage
+        run: rebar3 eunit --cover
+
+      - name: Run Common Test suites with coverage
+        run: rebar3 ct --cover
+
+      - name: Generate Codecov JSON report (using rebar3_codecov)
+        # Executa sempre para que os artefatos sejam gerados mesmo se os testes falharem.
+        if: always()
+        run: |
+          rebar3 as test codecov analyze || echo "Codecov analysis failed but continuing"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        # Condição para enviar o relatório apenas uma vez, usando uma versão específica do OTP.
+        if: success() && matrix.otp == '27.0'
+        with:
+          # Esta linha usa o segredo que você deve configurar no repositório.
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: _build/test/codecov/codecov.json
+          fail_ci_if_error: true
+          verbose: true
+
+      - name: Upload test logs and HTML coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Nome do artefato atualizado para ser mais apresentável
+          name: Erlang-OTP-${{ matrix.otp }}-Rebar3-${{ matrix.rebar3 }}
+          path: |
+            _build/test/logs/
+            _build/test/cover/
+          if-no-files-found: warn
+          retention-days: 7
