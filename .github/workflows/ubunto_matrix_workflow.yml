@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
-      fail-fast: false
+      fail-fast: true
       matrix:
         # Define as combinações específicas de OTP e Rebar3 que devem ser executadas.
         # Adicione aqui apenas as versões que você sabe que são compatíveis.
