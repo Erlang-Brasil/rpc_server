@@ -14,22 +14,22 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {
-    socket :: socket() | undefined,
     connection :: pid() | undefined,
     hashId :: term() | undefined,
     status :: connected | disconnected
 }).
 
-start_link([ClientSocket, ConnectionPid]) ->
-    gen_server:start_link(?MODULE, [ClientSocket, ConnectionPid], []).
+start_link([ConnectionPid, Meta]) ->
+    gen_server:start_link(?MODULE, [ConnectionPid, Meta], []).
 
-init([ClientSocket, ConnectionPid]) ->
-    HashId = gen_hash_identification(ClientSocket),
-    ets:insert(connection_table, {HashId, self()}),
-    ?LOG_INFO("Iniciando shell ClientSocket ~p | ConnectionPid ~p | Hash ~p | Versão ~p", [ClientSocket, ConnectionPid, HashId, ?MODULO_VERSAO]),
-    gen_server:cast(ConnectionPid, {command_response, io_lib:format("Client identification ~p~n", [HashId])}),
-    
-    {ok, #state{connection = ConnectionPid, socket = ClientSocket, hashId = HashId, status = connected}}.
+init([ConnectionPid, Meta]) ->
+    HashId = maps:get(hash_id, Meta, undefined),
+    ?LOG_INFO("Iniciando shell | ConnectionPid ~p | Hash ~p | Versão ~p", [ConnectionPid, HashId, ?MODULO_VERSAO]),
+    case HashId of
+        undefined -> ok;
+        _ -> gen_server:cast(ConnectionPid, {command_response, io_lib:format("Client identification ~p~n", [HashId])})
+    end,
+    {ok, #state{connection = ConnectionPid, hashId = HashId, status = connected}}.
 
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
@@ -37,24 +37,24 @@ handle_call(stop, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({hibernate}, State = #state{socket = _}) ->
+handle_cast({hibernate}, State) ->
     ?LOG_INFO("[SHELL INSTANCE] - Conexão com o cliente interrompida, marcando como desconectado..."),
     ?LOG_INFO("[SHELL INSTANCE] - Estado antes da desconexão: ~p", [State]),
     NewState = State#state{status = disconnected},
     ?LOG_INFO("[SHELL INSTANCE] - Estado após hibernação: ~p", [NewState]),
     {noreply, NewState};
 
-handle_cast({reconnected, ConnectionPid, ClientSocket}, State) ->
-    ?LOG_INFO("[SHELL INSTANCE] - Recebida mensagem de reconexão: ConnectionPid=~p, ClientSocket=~p", [ConnectionPid, ClientSocket]),
+handle_cast({reconnected, ConnectionPid, _ClientSocket}, State) ->
+    ?LOG_INFO("[SHELL INSTANCE] - Recebida mensagem de reconexão: ConnectionPid=~p", [ConnectionPid]),
     ?LOG_INFO("[SHELL INSTANCE] - Conexão restabelecida com o cliente, shell pronto..."),
-    ?LOG_INFO("[SHELL INSTANCE] - Nova ConnectionPid: ~p, Novo ClientSocket: ~p", [ConnectionPid, ClientSocket]),
+    ?LOG_INFO("[SHELL INSTANCE] - Nova ConnectionPid: ~p", [ConnectionPid]),
     ?LOG_INFO("[SHELL INSTANCE] - Estado atual: ~p", [State]),
     gen_server:cast(ConnectionPid, {command_response, "Conexao restabelecida\n"}),
-    NewState = State#state{connection = ConnectionPid, socket = ClientSocket, hashId = State#state.hashId, status = connected},
+    NewState = State#state{connection = ConnectionPid, hashId = State#state.hashId, status = connected},
     ?LOG_INFO("[SHELL INSTANCE] - Estado após reconexão: ~p", [NewState]),
     {noreply, NewState};
 
-handle_cast({execute_command, Command}, State = #state{socket = _}) ->
+handle_cast({execute_command, Command}, State) ->
     case State#state.status of
         disconnected ->
             ?LOG_INFO("[SHELL INSTANCE] - Tentativa de executar comando enquanto desconectado: ~p", [Command]),
@@ -98,31 +98,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
-%% @doc
-%% Gera um hash identificador único para uma conexão (baseado em djb_hash).
-%%
-%% Este hash pode ser usado como identificador persistente para reconexões,
-%% baseado nas informações do socket do cliente (por exemplo, IP e porta).
-%%
-%% @param Socket :: pid() | {inet:ip_address(), inet:port_number()}
-%% @return string()
--spec gen_hash_identification(gen_tcp:socket() | {inet:ip_address(), inet:port_number()}) -> string().
-gen_hash_identification(Socket) when is_port(Socket) ->
-    {ok, {IP, Port}} = inet:peername(Socket),
-    gen_hash_from_ip_port(IP, Port);
-
-gen_hash_identification({IP, Port}) when is_tuple(IP), (size(IP) == 4 orelse size(IP) == 8), is_integer(Port), Port > 0 ->
-    gen_hash_from_ip_port(IP, Port).
-
-%% @private
-%% Converte o IP para string (ex: "192.168.0.1") e concatena com porta
-%% Depois aplica o hash DJB
-gen_hash_from_ip_port(IP, Port) ->
-    IPStr = inet:ntoa(IP),
-    Str = lists:flatten(io_lib:format("~s:~p", [IPStr, Port])),
-    Hash = crypto:hash(sha256, Str),
-    Base64 = base64:encode(Hash),
-    binary_to_list(Base64).
+%% REMOVIDO: geração de hash agora ocorre no nó HTTP e é enviado via Meta
     
 
 

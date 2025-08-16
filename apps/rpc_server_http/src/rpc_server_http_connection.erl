@@ -1,4 +1,4 @@
--module(rpc_server_sctp_connection).
+-module(rpc_server_http_connection).
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 -include("rpc_server.hrl").
 
@@ -41,7 +41,7 @@ start_link([ClientSocket, ListenSocket]) ->
     gen_server:start_link(?MODULE, [ClientSocket, ListenSocket], []).
 
 
-%%% @doc Inicializa o estado do servidor gen_server para gerenciar uma conexão SCTP.
+%%% @doc Inicializa o estado do servidor gen_server para gerenciar uma conexão http.
 %%%
 %%% Esta função é chamada automaticamente quando o processo gen_server é iniciado.
 %%% Ela configura o socket do cliente, obtém informações do peer (cliente remoto),
@@ -157,7 +157,7 @@ handle_cast(_Msg, State) ->
 -spec handle_info({tcp | tcp_closed | tcp_error, inet:socket(), term()}, #state{}) -> {noreply, #state{}}.   
 handle_info({tcp, Socket, Data}, #state{clientSocket = Socket} = State) ->
     ?LOG_INFO("TCP handler chamado - Socket: ~p, Data: ~p", [Socket, Data]),
-    Command = parser_command:parse(Data),
+    Command = rpc_server_http_parser_command:parse(Data),
     NewState = handle_command(Command, State),
     {noreply, NewState};
 
@@ -269,8 +269,13 @@ handle_command({<<"reconnect">>, HashBin}, State = #state{shellInstancePid = und
             gen_server:cast(Pid, {reconnected, self(), State#state.clientSocket}),
             State#state{shellInstancePid = Pid};
         [] ->
-            ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell...~n"),
-            ShellPid = rpc_server_shell_manager_sup:start_shell(State#state.clientSocket, self()),
+            ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell (remota)...~n"),
+            {ok, {IP, Port}} = inet:peername(State#state.clientSocket),
+            HashId = gen_hash_identification({IP, Port}),
+            Meta = #{peer => {IP, Port}, hash_id => HashId},
+            ShellPid = rpc:call(node(global:whereis_name(rpc_server_shell_manager_sup)),
+                                rpc_server_shell_manager_sup, start_shell_remote,
+                                [self(), Meta]),
             State#state{shellInstancePid = ShellPid};
         _ ->
             ?LOG_INFO("Registro encontrado na ETS, mas PID inválido para hash ~p~n", [HashStr]),
@@ -290,9 +295,45 @@ handle_command(Cmd, State) ->
     NewState.
 
 validar_conexao(State = #state{shellInstancePid = undefined}) ->
-    ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell...~n"),
-    ShellPid = rpc_server_shell_manager_sup:start_shell(State#state.clientSocket, self()),
+    ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell (remota)...~n"),
+    {ok, {IP, Port}} = inet:peername(State#state.clientSocket),
+    HashId = gen_hash_identification({IP, Port}),
+    Meta = #{peer => {IP, Port}, hash_id => HashId},
+    ShellPid = rpc:call(node(global:whereis_name(rpc_server_shell_manager_sup)),
+                        rpc_server_shell_manager_sup, start_shell_remote,
+                        [self(), Meta]),
     State#state{shellInstancePid = ShellPid};
 
 validar_conexao(State) ->
     State.
+
+
+
+%% @doc
+%% Gera um hash identificador único para uma conexão (baseado em djb_hash).
+%%
+%% Este hash pode ser usado como identificador persistente para reconexões,
+%% baseado nas informações do socket do cliente (por exemplo, IP e porta).
+%%
+%% @param Socket :: pid() | {inet:ip_address(), inet:port_number()}
+%% @return string()
+-spec gen_hash_identification(gen_tcp:socket() | {inet:ip_address(), inet:port_number()}) -> string().
+gen_hash_identification(Socket) when is_port(Socket) ->
+    {ok, {IP, Port}} = inet:peername(Socket),
+    gen_hash_from_ip_port(IP, Port);
+
+gen_hash_identification({IP, Port}) when is_tuple(IP), (size(IP) == 4 orelse size(IP) == 8), is_integer(Port), Port > 0 ->
+    gen_hash_from_ip_port(IP, Port).
+
+%% @private
+%% Converte o IP para string (ex: "192.168.0.1") e concatena com porta
+%% Depois aplica o hash DJB
+gen_hash_from_ip_port(IP, Port) ->
+    IPStr = inet:ntoa(IP),
+    Str = lists:flatten(io_lib:format("~s:~p", [IPStr, Port])),
+    Hash = crypto:hash(sha256, Str),
+    Base64 = base64:encode(Hash),
+    binary_to_list(Base64).
+    
+
+ 

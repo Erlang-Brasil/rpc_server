@@ -1,4 +1,4 @@
--module(rpc_server_sctp_listen).
+-module(rpc_server_http_listen).
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 
@@ -162,7 +162,7 @@ handle_info({inet_async, ListenSocket, Ref, {ok, ClientSocket}}, #state{socket =
     ?LOG_INFO("Nova conexão recebida de ~p", [inet:peername(ClientSocket)]),
     case set_sockopt(ListenSocket, ClientSocket) of
         ok ->
-            case rpc_server_sctp_acceptor_sup:start_acceptor(ClientSocket, ListenSocket) of
+            case rpc_server_http_acceptor_sup:start_acceptor(ClientSocket, ListenSocket) of
                 {ok} ->
                     {ok, NewRef} = prim_inet:async_accept(ListenSocket, -1),
                     {noreply, State#state{ref = NewRef}};
@@ -210,7 +210,7 @@ handle_info(_Info, State) ->
 %%% @doc Aguarda até que o supervisor de acceptors esteja disponível.
 %%%
 %%% Esta função realiza tentativas periódicas para localizar o processo registrado como
-%%% `rpc_server_sctp_acceptor_sup`. Se não encontrar após o número máximo de tentativas,
+%%% `rpc_server_http_acceptor_sup`. Se não encontrar após o número máximo de tentativas,
 %%% retorna um erro. É útil durante a inicialização do servidor para garantir que os recursos
 %%% necessários estejam disponíveis antes de prosseguir.
 %%%
@@ -226,7 +226,7 @@ handle_info(_Info, State) ->
 wait_for_acceptor_sup(0) ->
     {error, acceptor_supervisor_not_found};
 wait_for_acceptor_sup(Attempts) ->
-    case whereis(rpc_server_sctp_acceptor_sup) of
+        case whereis(rpc_server_http_acceptor_sup) of
         undefined ->
             timer:sleep(200),
             wait_for_acceptor_sup(Attempts - 1);
@@ -250,7 +250,7 @@ wait_for_acceptor_sup(Attempts) ->
 
 -spec start_listening(pid()) -> {ok, #state{}} | {stop, term()}.
 start_listening(AcceptorSup) ->
-    Port = application:get_env(rpc_server, tcp_port, ?DEFAULT_PORT),
+    Port = application:get_env(rpc_server_http, tcp_port, ?DEFAULT_PORT),
     Options = [
         binary,
         {reuseaddr, true},
