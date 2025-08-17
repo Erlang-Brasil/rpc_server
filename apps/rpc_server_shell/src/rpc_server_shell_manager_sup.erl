@@ -11,7 +11,7 @@
 -include("rpc_server.hrl").
 -export([start_link/0]).
 
--export([init/1, start_shell/2]).
+-export([init/1, start_shell/2, start_shell_remote/2]).
 
 
 %%% @doc Inicia o supervisor do io manager.
@@ -19,7 +19,7 @@
 %%% @returns {ok, pid()} | {error, term()}
 -spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({global, ?MODULE}, ?MODULE, []).
 
 
 %%% @doc Callback de inicialização do supervisor.
@@ -49,14 +49,26 @@ init([]) ->
 
 
 -spec start_shell(socket() | ssl:sslsocket(), pid()) -> pid() | {error, Reason :: term()}.
-start_shell(ClientSocket, ConnectionPid) ->
-    Args = [ClientSocket, ConnectionPid],
-    case supervisor:start_child(?MODULE, [Args]) of 
+start_shell(_ClientSocket, ConnectionPid) ->
+    Args = [ConnectionPid, #{}],
+    case supervisor:start_child({global, ?MODULE}, [Args]) of 
         {ok, ShellPid} -> 
             ?LOG_INFO("Shell Iniciado PID ~p", [ShellPid]),
             ShellPid;
         {error, Reason} ->
             ?LOG_ERROR("Falha ao iniciar o shell ~p", [Reason]),
+            {error, Reason}
+    end.
+
+-spec start_shell_remote(pid(), map()) -> pid() | {error, Reason :: term()}.
+start_shell_remote(ConnectionPid, Meta) ->
+    Args = [ConnectionPid, Meta],
+    case supervisor:start_child({global, ?MODULE}, [Args]) of 
+        {ok, ShellPid} -> 
+            ?LOG_INFO("Shell Iniciado PID ~p (remoto)", [ShellPid]),
+            ShellPid;
+        {error, Reason} ->
+            ?LOG_ERROR("Falha ao iniciar o shell remoto ~p", [Reason]),
             {error, Reason}
     end.
 

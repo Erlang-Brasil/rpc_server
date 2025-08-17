@@ -1,4 +1,4 @@
--module(rpc_server_sctp_listen_sup).
+-module(rpc_server_http_listen_sup).
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 -include("rpc_server.hrl").
@@ -34,20 +34,20 @@ init([]) ->
     
     ChildSpecs = [
         #{
-            id => rpc_server_sctp_acceptor_sup,
-            start => {rpc_server_sctp_acceptor_sup, start_link, []},
+            id => rpc_server_http_acceptor_sup,
+            start => {rpc_server_http_acceptor_sup, start_link, []},
             restart => permanent,
             shutdown => infinity,
             type => supervisor,
-            modules => [rpc_server_sctp_acceptor_sup]
+            modules => [rpc_server_http_acceptor_sup]
         },
         #{
-            id => rpc_server_sctp_listen,
-            start => {rpc_server_sctp_listen, start_link, []},
+            id => rpc_server_http_listen,
+            start => {rpc_server_http_listen, start_link, []},
             restart => permanent,
             shutdown => 2000,
             type => worker,
-            modules => [rpc_server_sctp_listen]
+            modules => [rpc_server_http_listen]
         }
     ],
     

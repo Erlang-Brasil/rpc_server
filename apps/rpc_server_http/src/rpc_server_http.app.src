@@ -1,16 +1,17 @@
-{application, rpc_server, [
-    {description, "RPC Server Application"},
+{application, rpc_server_http, [
+    {description, "An OTP application"},
     {vsn, "0.1.0"},
     {registered, [
         rpc_server_sup,
-        rpc_server_sctp_listen_sup,
-        rpc_server_sctp_acceptor_sup
+        rpc_server_http_listen_sup,
+        rpc_server_http_acceptor_sup
     ]},
-    {mod, {rpc_server_app, []}},
+    {mod, {rpc_server_http_app, []}},
     {applications, [
         kernel,
         stdlib,
-        sasl
+        sasl,
+        lager
     ]},
     {env, [
         {tcp_port, 8080},
@@ -29,13 +30,7 @@
             {send_timeout_close, true}
         ]}
     ]},
-    {modules, [
-        rpc_server_app,
-        rpc_server_sup,
-        rpc_server_sctp_listen_sup,
-        rpc_server_sctp_acceptor_sup,
-        rpc_server_sctp_connection
-    ]},
+    {modules, []},
     {licenses, ["Apache-2.0"]},
     {links, []}
-]}.
+ ]}.

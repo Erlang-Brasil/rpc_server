@@ -1,4 +1,4 @@
--module(parser_command).
+-module(rpc_server_http_parser_command).
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 -export([parse/1]).

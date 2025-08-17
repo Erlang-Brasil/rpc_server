@@ -1,4 +1,4 @@
--module(rpc_server_sctp_acceptor_sup).
+-module(rpc_server_http_acceptor_sup).
 
 -author('Fernando Areias <nando.calheirosx@gmail.com>').
 -include("rpc_server.hrl").
@@ -37,12 +37,12 @@ init([]) ->
     
     ChildSpecs = [
         #{
-            id => rpc_server_sctp_connection,
-            start => {rpc_server_sctp_connection, start_link, []},
+            id => rpc_server_http_connection,
+            start => {rpc_server_http_connection, start_link, []},
             restart => temporary,  % Não inicia automaticamente
             shutdown => 90,
             type => worker,
-            modules => [rpc_server_sctp_connection]
+            modules => [rpc_server_http_connection]
         }
     ],
     
