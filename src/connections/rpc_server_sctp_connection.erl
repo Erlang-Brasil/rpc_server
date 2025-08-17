@@ -258,33 +258,27 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 % TODO: REFATORAR ISSO, SEM TEMPO AGORA
-handle_command({<<"reconnect">>, HashBin}, State = #state{shellInstancePid = undefined}) when is_binary(HashBin) ->
+handle_command({<<"reconnect">>, HashBin}, State = #state{shellInstancePid = undefined})  ->
     HashStr = binary_to_list(HashBin),
-    case catch list_to_integer(HashStr) of
-        HashInt when is_integer(HashInt) ->
-            case ets:lookup(connection_table, HashInt) of
-                [{HashInt, Pid}] when is_pid(Pid) ->
-                    ?LOG_INFO("Encontrou a instância do shell anterior"),
-                    ?LOG_INFO("Verificando se processo ~p está vivo: ~p", [Pid, is_process_alive(Pid)]),
-                    ?LOG_INFO("Enviando mensagem de reconexão para ~p", [Pid]),
-                    ?LOG_INFO("Mensagem sendo enviada: {reconnected, ~p, ~p}", [self(), State#state.clientSocket]),
-                    gen_server:cast(Pid, {reconnected, self(), State#state.clientSocket}),
-                    State#state{shellInstancePid = Pid};
-                [] ->
-                    ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell...~n"),
-                    ShellPid = rpc_server_shell_manager_sup:start_shell(State#state.clientSocket, self()),
-                    State#state{shellInstancePid = ShellPid};
-                _ ->
-                    ?LOG_INFO("Registro encontrado na ETS, mas PID inválido para hash ~p~n", [HashInt]),
-                    State
-            end;
+    case ets:lookup(connection_table, HashStr) of
+        [{HashStr, Pid}] when is_pid(Pid) ->
+            ?LOG_INFO("Encontrou a instância do shell anterior"),
+            ?LOG_INFO("Verificando se processo ~p está vivo: ~p", [Pid, is_process_alive(Pid)]),
+            ?LOG_INFO("Enviando mensagem de reconexão para ~p", [Pid]),
+            ?LOG_INFO("Mensagem sendo enviada: {reconnected, ~p, ~p}", [self(), State#state.clientSocket]),
+            gen_server:cast(Pid, {reconnected, self(), State#state.clientSocket}),
+            State#state{shellInstancePid = Pid};
+        [] ->
+            ?LOG_INFO("Não havia instância do shell existente, criando uma nova instância do shell...~n"),
+            ShellPid = rpc_server_shell_manager_sup:start_shell(State#state.clientSocket, self()),
+            State#state{shellInstancePid = ShellPid};
         _ ->
-            ?LOG_ERROR("Hash inválido recebido para reconexão: ~p", [HashBin]),
+            ?LOG_INFO("Registro encontrado na ETS, mas PID inválido para hash ~p~n", [HashStr]),
             State
     end;
 
-handle_command({<<"reconnect">>, HashBin}, State = #state{shellInstancePid = Pid}) 
-    when is_binary(HashBin), is_pid(Pid) ->
+handle_command({<<"reconnect">>, _HashBin}, State = #state{shellInstancePid = Pid}) 
+    when is_pid(Pid) ->
       ?LOG_INFO("O cliente já possui uma conexão ativa. Ignorando tentativa de reconexão duplicada."),
       gen_server:cast(self(), {command_response, "Você ja esta conectado.\n"}),
       State;

@@ -105,8 +105,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% baseado nas informações do socket do cliente (por exemplo, IP e porta).
 %%
 %% @param Socket :: pid() | {inet:ip_address(), inet:port_number()}
-%% @return non_neg_integer()
--spec gen_hash_identification(gen_tcp:socket() | {inet:ip_address(), inet:port_number()}) -> non_neg_integer().
+%% @return string()
+-spec gen_hash_identification(gen_tcp:socket() | {inet:ip_address(), inet:port_number()}) -> string().
 gen_hash_identification(Socket) when is_port(Socket) ->
     {ok, {IP, Port}} = inet:peername(Socket),
     gen_hash_from_ip_port(IP, Port);
@@ -120,7 +120,9 @@ gen_hash_identification({IP, Port}) when is_tuple(IP), (size(IP) == 4 orelse siz
 gen_hash_from_ip_port(IP, Port) ->
     IPStr = inet:ntoa(IP),
     Str = lists:flatten(io_lib:format("~s:~p", [IPStr, Port])),
-    crypto:hash(sha256, Str).
+    Hash = crypto:hash(sha256, Str),
+    Base64 = base64:encode(Hash),
+    binary_to_list(Base64).
     
 
 
