@@ -1,0 +1,7 @@
+-name rpc_server_http@127.0.0.1
+-setcookie service_discovery_cookie
+-env ERL_MAX_PORTS 4096
+-env ERL_CRASH_DUMP ./log/erl_crash_http.dump
+
+
+-kernel logger_level info
