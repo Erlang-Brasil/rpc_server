@@ -1,0 +1,81 @@
+name: "[Dialyzer] Status"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - .github/workflows/**
+      - apps/**
+      - config/**
+      - rebar.lock
+      - rebar.config
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - .github/workflows/**
+      - apps/**
+      - config/**
+      - rebar.lock
+      - rebar.config
+
+permissions:
+  contents: read # Necessário para actions/checkout
+
+jobs:
+  build:
+    # Nome do job customizado para exibição mais clara no GitHub Actions UI
+    name: OTP ${{ matrix.otp }} Rebar3 ${{ matrix.rebar3 }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Garante que todos os jobs na matriz rodem, mesmo que um falhe.
+      fail-fast: true
+      matrix:
+        # Define as combinações específicas de OTP e Rebar3 que devem ser executadas.
+        # Adicione aqui apenas as versões que você sabe que são compatíveis.
+        include:
+          - otp: '28.0'
+            rebar3: '3.25.0'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1
+        id: setup-beam
+        with:
+          otp-version: ${{ matrix.otp }}
+          # Agora usa a versão do rebar3 da matriz
+          rebar3-version: ${{ matrix.rebar3 }}
+
+      - name: Restore Hex package cache
+        uses: actions/cache@v4
+        id: hex-cache
+        with:
+          path: |
+            ~/.cache/rebar3/hex
+            ~/.hex
+          key: ${{ runner.os }}-hex-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-hex-${{ steps.setup-beam.outputs.otp-version }}-
+
+      - name: Restore Dialyzer PLT cache
+        uses: actions/cache@v4
+        id: plt-cache
+        with:
+          path: |
+            ~/.cache/rebar3/plt_*.ets
+            _build/default/rebar3_*.plt
+          key: ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('**/rebar.lock', '**/rebar.config') }}
+          restore-keys: |
+            ${{ runner.os }}-plt-${{ steps.setup-beam.outputs.otp-version }}-
+
+      - name: Install Dependencies
+        if: steps.hex-cache.outputs.cache-hit != 'true'
+        run: rebar3 deps
+
+      - name: Compile
+        run: rebar3 compile
+
+      - name: Run Dialyzer
+        run: rebar3 dialyzer

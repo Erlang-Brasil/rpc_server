@@ -1,5 +1,8 @@
 # RPC Server
 
+[![[Build & Test] Status](https://github.com/Erlang-Brasil/rpc_server/actions/workflows/build.yml/badge.svg)](https://github.com/Erlang-Brasil/rpc_server/actions/workflows/build.yml)
+[![[Dialyzer] Status](https://github.com/Erlang-Brasil/rpc_server/actions/workflows/dialyzer.yml/badge.svg)](https://github.com/Erlang-Brasil/rpc_server/actions/workflows/dialyzer.yml)
+
 Servidor RPC TCP altamente concorrente em Erlang/OTP, composto por dois apps: `rpc_server_http` (conexões TCP) e `rpc_server_shell` (execução de comandos e sessões persistentes).
 
 ## Estrutura do projeto
