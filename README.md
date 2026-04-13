@@ -28,9 +28,18 @@ rpc_server/
 │       └── include/rpc_server.hrl
 ├── config/
 │   ├── dev_sys.config
+│   ├── dev_sys_quic.config
 │   ├── dev_vm.config
+│   ├── dev_vm_quic.config
 │   ├── dev_http.vm.args
-│   └── dev_shell.vm.args
+│   ├── dev_http_quic.vm.args
+│   ├── dev_shell.vm.args
+│   └── dev_shell_quic.vm.args
+├── certs/
+│   ├── generate.sh
+│   ├── cert.pem
+│   └── key.pem
+├── start.sh
 └── rebar.config
 ```
 
@@ -60,7 +69,41 @@ rebar3 compile
 
 ## Como rodar
 
-### Desenvolvimento (interativo)
+O script `start.sh` permite iniciar cada nó com o protocolo de distribuição desejado: **TCP** (padrão Erlang) ou **QUIC** (RFC 9000, via [erlang_quic](https://github.com/benoitc/erlang_quic)).
+
+### Pré-requisitos para QUIC
+
+Gere os certificados TLS (necessários apenas uma vez):
+
+```bash
+cd certs && bash generate.sh
+```
+
+### Usando o start.sh
+
+```bash
+# TCP (padrão)
+./start.sh --node http                    # nó HTTP na porta 8080
+./start.sh --node shell                   # nó Shell
+./start.sh --node default                 # ambos os apps no mesmo nó
+
+# QUIC
+./start.sh --node http --protocol quic    # nó HTTP com distribuição QUIC (porta dist 4434)
+./start.sh --node shell --protocol quic   # nó Shell com distribuição QUIC (porta dist 4435)
+./start.sh --node default --protocol quic # ambos os apps com QUIC (porta dist 4433)
+```
+
+Cada tipo de nó usa uma porta QUIC diferente para evitar conflito no mesmo host:
+
+| Nó | Porta QUIC |
+|----|------------|
+| default | 4433 |
+| http | 4434 |
+| shell | 4435 |
+
+> **Importante:** Todos os nós do cluster devem usar o mesmo protocolo. Nós QUIC e TCP não se conectam entre si.
+
+### Desenvolvimento (interativo, sem script)
 
 ```bash
 rebar3 shell --config config/dev_sys.config
@@ -99,7 +142,7 @@ rebar3 as shell_node release -n rpc_server_shell
 
 ## Configuração
 
-Arquivo principal: `config/dev_sys.config`.
+Arquivo principal: `config/dev_sys.config` (TCP) ou `config/dev_sys_quic.config` (QUIC).
 
 Parâmetros relevantes do `rpc_server_http` (padrões):
 
@@ -111,7 +154,27 @@ Parâmetros relevantes do `rpc_server_http` (padrões):
 ]}
 ```
 
-Nomes de nós e cookie (releases e dev):
+### Configuração QUIC
+
+O `dev_sys_quic.config` inclui a seção de distribuição QUIC:
+
+```erlang
+{quic, [
+  {dist, [
+    {cert_file, "/path/to/cert.pem"},
+    {key_file, "/path/to/key.pem"},
+    {verify, verify_none},
+    {discovery_module, quic_discovery_static},
+    {nodes, [
+      {'rpc_server@127.0.0.1', {"127.0.0.1", 4433}},
+      {'rpc_server_http@127.0.0.1', {"127.0.0.1", 4434}},
+      {'rpc_server_shell@127.0.0.1', {"127.0.0.1", 4435}}
+    ]}
+  ]}
+]}
+```
+
+### Nomes de nós e cookie
 
 - Nó único: `config/dev_vm.config` (ex.: `-name rpc_server@127.0.0.1`, cookie `service_discovery_cookie`).
 - HTTP: `config/dev_http.vm.args` (ex.: `-name rpc_server_http@127.0.0.1`).
